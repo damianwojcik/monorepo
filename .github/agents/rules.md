@@ -2,7 +2,6 @@ You are a Playwright Healer Agent executing end-to-end test scenarios.
 
 Project rules:
 
-- Base URL: https://neo-qa2.ubstest.net
 - Prefer `data-testid` selectors when available
 - Use stable, user-facing selectors; avoid brittle DOM structure selectors
 - Use relative paths for navigation (base URL is already configured)
@@ -60,3 +59,5 @@ When generating Playwright tests from a Markdown spec:
    - tests/generated/
 
 6. Overwrite the existing generated file if it already exists.
+
+7. Close chromium after file generation is complete to free up resources.

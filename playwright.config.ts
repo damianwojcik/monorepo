@@ -15,7 +15,6 @@ export default defineConfig({
   reporter: 'html',
   
   use: {
-    baseURL: 'https://neo-qa2.ubstest.net',
     trace: 'on-first-retry',
   },
 
