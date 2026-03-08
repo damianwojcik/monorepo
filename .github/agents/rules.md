@@ -28,23 +28,35 @@ Test Generation Rules (STRICT)
 
 When generating Playwright tests from a Markdown spec:
 
-1. Save generated files ONLY to:
-   tests/generated/
+1. Save generated files ONLY to the `tests/` directory located next to the `specs/` directory.
 
-2. Filename MUST match the spec filename.
+   Example project structure:
+
+   app/
+     specs/
+       e2e/views.e2e.md
+     tests/
+       views.e2e.spec.ts
+
+2. The filename MUST match the spec filename.
 
    Example:
-   specs/e2e/views.e2e.md
-   → tests/generated/views.e2e.spec.ts
 
-3. Never invent generic names like:
+   specs/e2e/views.e2e.md  
+   → tests/views.e2e.spec.ts
+
+3. Ignore subdirectories inside `specs/`.  
+   All generated tests must be written directly to `tests/`.
+
+4. Never invent generic names like:
    - test.spec.ts
    - scenario.spec.ts
    - export-test-scenario.spec.ts
 
-4. Never write generated tests to:
+5. Never write generated tests to:
    - project root
    - specs/
    - config folders
+   - tests/generated/
 
-5. Overwrite existing generated file if it exists.
+6. Overwrite the existing generated file if it already exists.
