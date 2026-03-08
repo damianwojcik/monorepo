@@ -26,8 +26,9 @@ model: Claude Sonnet 4
 mcp-servers:
   playwright-test:
     type: stdio
-    command: npx
+    command: pnpm
     args:
+      - exec
       - playwright
       - run-test-mcp-server
     tools:
@@ -36,14 +37,7 @@ mcp-servers:
 
 ## Project Rules
 
-Always follow the rules and guidelines defined in [.github/agents/rules.md](.github/agents/rules.md). These rules cover:
-- Base URL configuration
-- Selector preferences and stability
-- Navigation practices
-- Application state management
-- Verification guidelines
-- Artifact storage
-- Test generation and file organization requirements
+Always follow the rules and guidelines defined in [.github/agents/rules.md](.github/agents/rules.md).
 
 ---
 
@@ -66,6 +60,7 @@ application behavior.
   - Includes a comment with the step text before each step execution. Do not duplicate comments if step requires
     multiple actions.
   - Always use best practices from the log when generating tests.
+- Close chromium after file generation is complete to free up resources
 
    <example-generation>
    For following plan:

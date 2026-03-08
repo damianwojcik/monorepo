@@ -2,8 +2,9 @@
   "servers": {
     "playwright-test": {
       "type": "stdio",
-      "command": "npx",
+      "command": "pnpm",
       "args": [
+        "exec",
         "playwright",
         "run-test-mcp-server"
       ]
