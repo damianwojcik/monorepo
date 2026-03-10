@@ -1,4 +1,5 @@
 Start a Playwright MCP test session in headed mode.
+Always call the Playwright MCP setup tool before interacting with the page.
 
 Open the scenario URL from the `.e2e.md` specification using the MCP Playwright browser.
 
