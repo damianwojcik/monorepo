@@ -1,1 +1,5 @@
-node C:\UBS\Dev\nodejs-22\prefix\node_modules\@playwright\mcp\cli.js --browser chrome --headed
+{
+  "chat.tools.autoApprove": {
+    "playwright": true
+  }
+}
