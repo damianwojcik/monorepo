@@ -23,6 +23,8 @@ If the spec file is located at:
 generate the test at:
 <app-root>/tests/<name>.e2e.spec.ts
 
-The path must be resolved relative to the spec file location, not the repository root.
+Resolve the path relative to the spec file location.
 
-Do not create tests in any other directory.
+Code quality rules:
+- Do not generate unused variables or imports.
+- Only include code required for the scenario.
