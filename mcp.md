@@ -1,4 +1,16 @@
+playwright.config.ts
+import { defineConfig } from '@playwright/test';
+
+export default defineConfig({
+  testDir: '.',
+  testMatch: /playwright\.auth\.setup\.ts/,
+  fullyParallel: false,
+  retries: 0
+});
+
+
 playwright.auth.setup.ts
+
 
 import { test as setup } from '@playwright/test';
 
