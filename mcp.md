@@ -1,3 +1,5 @@
+playwright.auth.setup.ts
+
 import { test as setup } from '@playwright/test';
 
 const authFile = '.auth/user.json';
@@ -14,47 +16,70 @@ setup('authenticate', async ({ page }) => {
   await page.waitForURL('**/axion**');
 
   await page.context().storageState({ path: authFile });
-});
-
-
-
-import { defineConfig } from '@playwright/test';
-import path from 'path';
-
-export default defineConfig({
-
-  testDir: './tests',
-
-  use: {
-    storageState: path.resolve(__dirname, '../../.auth/user.json')
-  }
 
 });
 
-
-
-
+scripts/start-mcp.js
 
 import fs from "fs";
 import { execSync } from "child_process";
+import path from "path";
 
-const authFile = ".auth/user.json";
+const authFile = path.resolve(".auth/user.json");
+const MAX_AUTH_AGE_HOURS = 8;
 
-if (!fs.existsSync(authFile)) {
-  console.log("Auth file missing → running Playwright auth setup...");
-  execSync("npx playwright test playwright.auth.setup.ts", {
-    stdio: "inherit",
-  });
+function authExpired() {
+  if (!fs.existsSync(authFile)) return true;
+
+  const stat = fs.statSync(authFile);
+  const ageHours = (Date.now() - stat.mtimeMs) / (1000 * 60 * 60);
+
+  return ageHours > MAX_AUTH_AGE_HOURS;
 }
 
-console.log("Starting MCP...");
+if (authExpired()) {
+  console.log("Auth missing or expired → generating new session...");
+
+  execSync(
+    "npx playwright test playwright.auth.setup.ts",
+    { stdio: "inherit" }
+  );
+}
+
+console.log("Starting Playwright MCP...");
+
 execSync(
   "node node_modules/@playwright/mcp/cli.js --browser chrome --isolated --storage-state .auth/user.json",
   { stdio: "inherit" }
 );
 
+mcp.json
+
+{
+  "servers": {
+    "playwright-automation": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "node_modules/@playwright/mcp/cli.js",
+        "--browser",
+        "chrome",
+        "--isolated",
+        "--storage-state",
+        ".auth/user.json"
+      ]
+    }
+  }
+}
+
+Root package.json
+
+
 {
   "scripts": {
-    "mcp": "node scripts/start-mcp.js"
+    "auth": "playwright test playwright.auth.setup.ts",
+    "mcp": "node scripts/start-mcp.js",
+    "test:abc": "playwright test -c apps/abc/playwright.config.ts",
+    "test:def": "playwright test -c apps/def/playwright.config.ts"
   }
 }
