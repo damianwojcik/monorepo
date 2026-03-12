@@ -2,11 +2,13 @@
 
 ### Prerequisites
 
-- `root/.auth/user.json` must exist (auth session, valid for 8 hours)
-- If missing or expired, run from repo root:
-  ```
-  pnpm exec hive-playwright test playwright.auth.setup.spec.ts
-  ```
+From the repo root, run:
+
+```
+pnpm mcp
+```
+
+This will create `.auth/user.json` (if missing or expired) and start the MCP server. Keep it running while you work.
 
 ### Writing a spec
 
@@ -54,6 +56,6 @@ pnpm exec hive-playwright test tests/<name>.e2e.spec.ts --headed
 
 | Problem | Fix |
 |---------|-----|
-| Auth errors | Re-run the auth setup from Prerequisites |
+| Auth errors | Re-run `pnpm mcp` from repo root |
 | Wrong selectors | Fix in `.spec.ts`, rerun, or update the `.e2e.md` spec and regenerate |
 | Chat launches a browser or creates extra files | Start a fresh chat session — never continue a broken one |
