@@ -17,11 +17,14 @@ Execution:
 1. Open the scenario URL from the spec.
 2. Execute the steps exactly as written.
 3. After the scenario completes, generate the Playwright test.
+4. Do not create files to record steps, page states, or reasoning.
+5. Keep all intermediate reasoning and step tracking in memory only.
+6. Never write step logs such as `*-step*.md`, `*-state*.md`, `*-after*.md`, or similar files.
 
 File output restrictions (strict):
 
-- The repository filesystem is READ-ONLY except for the single allowed output file.
-- Never generate intermediate artifacts such as page snapshots, step descriptions, DOM dumps, or files like `*-initial.md`, `*-after-*.md`, `*-page-*.md`.
+- The filesystem is READ-ONLY. No files may be written during execution.
+- The only permitted write is the final test file.
 - You must not generate, write, or output any files other than the single required test file (`<app-root>/tests/<name>.e2e.spec.ts`).
 - Do not create, modify, or touch any .md files or any other files in any directory.
 - If any step would result in another file being created, skip that step and proceed only with the test file output.
