@@ -5,7 +5,7 @@ Use the Playwright MCP server to run a headed Chrome browser and execute the sce
 Rules:
 
 - You MUST run the all the steps one by one using the tools provided by Playwright.
-- If relative pathname is given, use `https://neo-qa2.ubstest.net` as base url.
+- If relative pathname is given, use `https://neo-qa2.ubstest.net` as base url
 - Always start with the MCP Playwright setup tool.
 - Interact with the application **only through the MCP browser**.
 - **Never run Playwright CLI**, shell commands, or existing tests.
@@ -17,14 +17,9 @@ Execution:
 1. Open the scenario URL from the spec.
 2. Execute the steps exactly as written.
 3. After the scenario completes, generate the Playwright test.
-4. Do not create files to record steps, page states, or reasoning.
-5. Keep all intermediate reasoning and step tracking in memory only.
-6. Never write step logs such as `*-step*.md`, `*-state*.md`, `*-after*.md`, or similar files.
 
 File output restrictions (strict):
 
-- The filesystem is READ-ONLY. No files may be written during execution.
-- The only permitted write is the final test file.
 - You must not generate, write, or output any files other than the single required test file (`<app-root>/tests/<name>.e2e.spec.ts`).
 - Do not create, modify, or touch any .md files or any other files in any directory.
 - If any step would result in another file being created, skip that step and proceed only with the test file output.

@@ -1,0 +1,1 @@
+Follow the instructions in prompt.md to generate a test from the attached spec.
