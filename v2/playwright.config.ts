@@ -1,7 +1,6 @@
-import { execSync } from 'child_process';
-import path from 'path';
-
-const monorepoRoot = execSync('git rev-parse --show-toplevel').toString().trim();
-
-// then in the config:
-storageState: path.join(monorepoRoot, '.auth/user.json'),
+viewport: { width: 1920, height: 1080 },
+actionTimeout: 2 * 60_000,
+screenshot: 'only-on-failure',
+video: 'on-first-retry',
+trace: 'on-first-retry',
+ignoreHTTPSErrors: true,
