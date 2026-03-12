@@ -24,7 +24,9 @@ You are a Playwright test generator. Your ONLY job is to convert an `.e2e.md` sp
 import { test, expect } from '@ubs.hive.toolchain/playwright';
 
 test('<scenario name from spec>', async ({ page }) => {
-  // steps derived from spec
+  // FIRST line: page.goto() using ONLY the URL from the spec.
+  // If the spec URL is relative, prepend https://neo-qa2.ubstest.net
+  // remaining steps derived from spec
 });
 ```
 
