@@ -1,18 +1,44 @@
-// 1. Improve the GridFilter type to actually describe the shape
-type GridFilter = {
-  values: Record<string, unknown>;
-  toFilteringSpec: (values: string[]) => FilteringSpec[]; // adjust return type to match yours
-  fromFilteringSpec: () => Record<string, unknown>;
+// Reverse lookup
+const YesOrNoReverse = Object.fromEntries(
+  Object.entries(YesOrNoFilter).map(([k, v]) => [v, k])
+) as Record<string, string>;
+
+[PropellantField.AllToAll]: {
+  // ...
+  fromFilteringSpecToGridFilterModel: (specs: FilteringSpec[]) => {
+    const spec = specs.find(s => s.field === PropellantField.AllToAll);
+    if (!spec) return ({});
+    const values = (spec.value as string[]).map(v => YesOrNoReverse[v] ?? v);
+    return { values, refresh: true };
+  },
+},
+
+
+const DateTimeFilterReverse = Object.fromEntries(
+  Object.entries(DateTimeFilter).map(([_, v]) => {
+    // map the text values back: '-7d' → 'ONE_WEEK', '-1m' → 'ONE_MONTH', etc.
+    const textMap: Record<string, string> = {
+      '-7d': 'ONE_WEEK', '-1m': 'ONE_MONTH', 
+      '-2m': 'TWO_MONTHS', '-3m': 'THREE_MONTHS'
+    };
+    return [v, v]; // values are already the enum values
+  })
+);
+
+// Actually simpler — just reverse the text-to-enum mapping:
+const textToDateTimeFilter: Record<string, string> = {
+  '-7d': 'ONE_WEEK',
+  '-1m': 'ONE_MONTH',
+  '-2m': 'TWO_MONTHS',
+  '-3m': 'THREE_MONTHS',
 };
 
-// 2. In your handler, the null check you already have is fine,
-//    but TS needs it before accessing .toFilteringSpec:
-const newFilteringSpecs = Object.entries(filterModel).flatMap(([colId, value]) => {
-  const gridFilter = gridFilters[colId as keyof typeof gridFilters];
-  if (!gridFilter) {
-    console.warn('No gridFilter found for', colId);
-    return [];
-  }
-  // TS now knows gridFilter is defined here
-  return gridFilter.toFilteringSpec(value.values);
-});
+[PropellantField.TradingDateAndTime]: {
+  // ...
+  fromFilteringSpecToGridFilterModel: (specs: FilteringSpec[]) => {
+    const spec = specs.find(s => s.field === PropellantField.TradingDateAndTime);
+    if (!spec) return ({});
+    const value = textToDateTimeFilter[spec.text] ?? spec.text;
+    return { values: [value], refresh: true };
+  },
+},
