@@ -1,16 +1,30 @@
 const sizeFilterConfig = {
-  GreaterThan5mm: { value: 'RANGE_GREATER_THAN_5MM', label: '>= 5 MM' },
-  From3mmTo5mm:   { value: 'RANGE_3MM_5MM',          label: '=> 3 MM to < 5 MM' },
-  From1mmTo3mm:   { value: 'RANGE_1MM_3MM',          label: '=> 1 MM to < 3 MM' },
-  From500kTo1m:   { value: 'RANGE_500K_1MM',         label: '=> 500K to < 1 MM' },
-  LessThan500k:   { value: 'RANGE_LESS_THAN_500K',   label: '< 500K' },
+  GreaterThan5mm: { value: 'RANGE_GREATER_THAN_5MM', label: '>= 5 MM', min: 5_000_000, max: null },
+  From3mmTo5mm:   { value: 'RANGE_3MM_5MM',          label: '=> 3 MM to < 5 MM', min: 3_000_000, max: 5_000_000 },
+  From1mmTo3mm:   { value: 'RANGE_1MM_3MM',          label: '=> 1 MM to < 3 MM', min: 1_000_000, max: 3_000_000 },
+  From500kTo1m:   { value: 'RANGE_500K_1MM',         label: '=> 500K to < 1 MM', min: 500_000,   max: 1_000_000 },
+  LessThan500k:   { value: 'RANGE_LESS_THAN_500K',   label: '< 500K',            min: null,      max: 500_000 },
 } as const;
 
-export const SizeFilter = Object.fromEntries(
-  Object.entries(sizeFilterConfig).map(([key, { value }]) => [key, value]),
-) as { readonly [K in keyof typeof sizeFilterConfig]: (typeof sizeFilterConfig)[K]['value'] };
+fromGridFilterModelToFilteringSpecs: (values: string[]): FilteringSpec => {
+  if (!values || values.length === 0) return [];
+  const field = PropellantField.NotionalAmount;
 
-export type SizeFilterValues = (typeof SizeFilter)[keyof typeof SizeFilter];
+  const sizeMatchers = values.map(v => {
+    const operator = 'or';
+    const base = { operator, field };
+    const range = sizeFilterRanges[v as SizeFilterValue];
 
-export const sizeFilterParseValue = (key: string): string =>
-  Object.values(sizeFilterConfig).find(c => c.value === key)?.label ?? key;
+    if (v === SizeFilter.LessThan500k) {
+      return { ...base, key: uid(), comparison: '<', value: range.max, text: range.max.toString() };
+    }
+    if (v === SizeFilter.GreaterThan5mm) {
+      return { ...base, key: uid(), comparison: '>', value: range.min, text: range.min.toString() };
+    }
+    return {
+      ...base,
+      // the rest — both min and max with 'between' or two matchers
+    };
+  });
+  // ...
+},
