@@ -1,31 +1,24 @@
-export const buildFilterModelFromSpec = (
-  filteringSpec: FilteringSpec | undefined,
-  gridFilters: Partial<Record<string, GridFilter>>,
-): Record<string, any> => {
-  const filterModel: Record<string, any> = {};
+// useEffect: querySpec → ag-grid
+useEffect(() => {
+  const api = agGridRef.current?.api;
+  if (!api) return;
 
-  filteringSpec?.forEach(matcher => {
-    const gridFilter = gridFilters?.[matcher.field];
-    if (!gridFilter) {
-      logger.warn(`No grid filter found for colId: ${matcher.field}`);
-      return;
-    }
+  api.setFilterModel(
+    buildFilterModelFromSpec(filteringSpec, gridFilters),
+    'programmatic' as any,
+  );
+}, [filteringSpec]);
 
-    const result = gridFilter.fromFilteringSpecToGridFilterModel(matcher);
-    if (!result) return;
+// ag-grid → querySpec
+const handleFilterChange = hooks.useDynamicCallback((event: community.FilterChangedEvent) => {
+  if (event.source !== 'columnFilter') return;
+  // 'programmatic' source won't match 'columnFilter', so it's already filtered out
 
-    for (const [key, val] of Object.entries(result) as [string, any][]) {
-      if (filterModel[key]) {
-        filterModel[key] = {
-          ...filterModel[key],
-          values: [...filterModel[key].values, ...val.values],
-        };
-      } else {
-        filterModel[key] = val;
-      }
-    }
+  const filterModel = event.api.getFilterModel();
+  const newFilteringSpec = convertGridFilterModelToFilteringSpec(filterModel, gridFilters);
+
+  updateQuerySpec(PROPELLANT_V1_FILTERING_SPEC, {
+    filteringSpec: newFilteringSpec,
   });
+});
 
-  return filterModel;
-};
-const newFilterModel = buildFilterModelFromSpec(filteringSpec, gridFilters);
