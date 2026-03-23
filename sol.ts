@@ -1,80 +1,16 @@
-// consts/dateTimeFilter.ts
-
-const dateTimeFilterConfig = {
-  OneWeek:      { value: 'ONE_WEEK',      label: '1W', tenor: '-7d' },
-  OneMonth:     { value: 'ONE_MONTH',     label: '1M', tenor: '-1m' },
-  TwoMonths:    { value: 'TWO_MONTHS',    label: '2M', tenor: '-2m' },
-  ThreeMonths:  { value: 'THREE_MONTHS',  label: '3M', tenor: '-3m' },
+const sizeFilterConfig = {
+  GreaterThan5mm: { value: 'RANGE_GREATER_THAN_5MM', label: '>= 5 MM' },
+  From3mmTo5mm:   { value: 'RANGE_3MM_5MM',          label: '=> 3 MM to < 5 MM' },
+  From1mmTo3mm:   { value: 'RANGE_1MM_3MM',          label: '=> 1 MM to < 3 MM' },
+  From500kTo1m:   { value: 'RANGE_500K_1MM',         label: '=> 500K to < 1 MM' },
+  LessThan500k:   { value: 'RANGE_LESS_THAN_500K',   label: '< 500K' },
 } as const;
 
-export const DateTimeFilter = Object.fromEntries(
-  Object.entries(dateTimeFilterConfig).map(([key, { value }]) => [key, value]),
-) as { readonly [K in keyof typeof dateTimeFilterConfig]: (typeof dateTimeFilterConfig)[K]['value'] };
+export const SizeFilter = Object.fromEntries(
+  Object.entries(sizeFilterConfig).map(([key, { value }]) => [key, value]),
+) as { readonly [K in keyof typeof sizeFilterConfig]: (typeof sizeFilterConfig)[K]['value'] };
 
-export type DateTimeFilterKey = keyof typeof dateTimeFilterConfig;
-export type DateTimeFilterValue = (typeof DateTimeFilter)[DateTimeFilterKey];
+export type SizeFilterValues = (typeof SizeFilter)[keyof typeof SizeFilter];
 
-export const dateTimeFilterLabelFormatter = (key: string): string => {
-  const entry = Object.values(dateTimeFilterConfig).find(c => c.value === key);
-  return entry?.label ?? key;
-};
-
-export const dateTimeFilterTenorToValue = Object.fromEntries(
-  Object.values(dateTimeFilterConfig).map(c => [c.tenor, c.value]),
-) as Record<string, DateTimeFilterValue>;
-
-export const dateTimeFilterValueToTenor = Object.fromEntries(
-  Object.values(dateTimeFilterConfig).map(c => [c.value, c.tenor]),
-) as Record<DateTimeFilterValue, string>;
-
-// gridFilters.ts
-
-import {
-  type DateTimeFilterValue,
-  dateTimeFilterValueToTenor,
-  dateTimeFilterTenorToValue,
-} from '../grid/components/Grid/filters/consts/dateTimeFilter';
-
-// ...
-
-fromGridFilterModelToFilteringSpecs: (values: string[]): FilteringSpec => {
-  const value = values[0] as DateTimeFilterValue;
-  if (!value) return undefined;
-
-  const text = dateTimeFilterValueToTenor[value];
-  if (!text) return undefined;
-
-  const matcher = createFacetedSearchMatcher({
-    operator: 'and',
-    comparison: '>',
-    field: PropellantField.TradingDateAndTime,
-    value: { text },
-    text,
-  });
-  return fromFacetedSearchMatchers([matcher]);
-},
-
-fromFilteringSpecToGridFilterModel: (matcher: Matcher) => {
-  const tenor = matcher.value?.text;
-  const enumVal = tenor ? dateTimeFilterTenorToValue[tenor] : undefined;
-  if (!enumVal) return {};
-
-  return {
-    [PropellantField.TradingDateAndTime]: {
-      values: arrayify(enumVal),
-      refresh: true,
-    },
-  };
-},
-
-// extendedColDefs.ts
-
-import {
-  DateTimeFilter,
-  dateTimeFilterLabelFormatter,
-} from '../grid/components/Grid/filters/consts/dateTimeFilter';
-
-// ...
-
-values: Object.values(DateTimeFilter),
-filterLabelFormatter: dateTimeFilterLabelFormatter,
+export const sizeFilterParseValue = (key: string): string =>
+  Object.values(sizeFilterConfig).find(c => c.value === key)?.label ?? key;
