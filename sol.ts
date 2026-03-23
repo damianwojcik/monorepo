@@ -1,23 +1,15 @@
-const newFilterModel: Record<string, any> = {};
+type GridFilterConfig<TFilterValue = unknown> = {
+  filter: typeof ExternalFilter;
+  filterParams: ExternalFilterProps;
+  // querySpec → ag-grid filter model
+  fromFilteringSpecToGridFilterModel: (matcher: Matcher) => ColFilterModel;
+  // ag-grid filter model → querySpec
+  fromGridFilterModelToFilteringSpecs: (values: string[]) => FilteringSpec;
+  // initial querySpec matcher for this field
+  defaultMatcher: Matcher | undefined;
+};
 
-filteringSpec?.forEach(matcher => {
-  const gridFilter = gridFilters?.[matcher.field];
-  if (!gridFilter) {
-    logger.warn(`No grid filter found for colId: ${matcher.field}`);
-    return;
-  }
-  const result = gridFilter.fromFilteringSpecToGridFilterModel(matcher);
-  if (!result) return;
-
-  for (const [key, val] of Object.entries(result)) {
-    if (newFilterModel[key]) {
-      // merge values arrays
-      newFilterModel[key] = {
-        ...newFilterModel[key],
-        values: [...newFilterModel[key].values, ...val.values],
-      };
-    } else {
-      newFilterModel[key] = val;
-    }
-  }
-});
+export const initialFilteringSpec: FilteringSpec = 
+  Object.entries(gridFilters)
+    .map(([_, config]) => config.defaultMatcher)
+    .filter(Boolean);
