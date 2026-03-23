@@ -1,18 +1,15 @@
-for (const [field, extendedColDef] of Object.entries(extendedColDefs)) {
-  const gridFilter = gridFilters?.[field];
-  const defaultValues = gridFilter?.defaultMatcher
-    ? gridFilter.fromFilteringSpecToGridFilterModel(gridFilter.defaultMatcher)?.[field]?.values
-    : undefined;
+export const convertGridFilterModelToFilteringSpec = (
+  model: community.FilterModel,
+  gridFilters: worker.InternalConfig['gridFilters'],
+  initial = false,
+): FilteringSpec =>
+  Object.entries(model).flatMap(([colId, { values }]) => {
+    const gridFilter = gridFilters?.[colId];
+    if (!gridFilter) return [];
 
-  columnDefsDictionary[field] = {
-    ...columnDefsDictionary[field],
-    ...extendedColDef,
-    ...(defaultValues && extendedColDef.filterParams && {
-      filterParams: {
-        ...extendedColDef.filterParams,
-        defaultSelection: defaultValues,
-      },
-    }),
-    suppressHeaderMenuButton: true,
-  };
-}
+    if (initial && gridFilter.defaultMatcher) {
+      return [gridFilter.defaultMatcher];
+    }
+
+    return gridFilter.fromGridFilterModelToFilteringSpecs(values) ?? [];
+  });
