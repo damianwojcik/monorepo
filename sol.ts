@@ -1,30 +1,24 @@
 const sizeFilterConfig = {
-  GreaterThan5mm: { value: 'RANGE_GREATER_THAN_5MM', label: '>= 5 MM', min: 5_000_000, max: null },
-  From3mmTo5mm:   { value: 'RANGE_3MM_5MM',          label: '=> 3 MM to < 5 MM', min: 3_000_000, max: 5_000_000 },
-  From1mmTo3mm:   { value: 'RANGE_1MM_3MM',          label: '=> 1 MM to < 3 MM', min: 1_000_000, max: 3_000_000 },
-  From500kTo1m:   { value: 'RANGE_500K_1MM',         label: '=> 500K to < 1 MM', min: 500_000,   max: 1_000_000 },
-  LessThan500k:   { value: 'RANGE_LESS_THAN_500K',   label: '< 500K',            min: null,      max: 500_000 },
+  GreaterThan5mm: { value: 'RANGE_GREATER_THAN_5MM', label: '>= 5 MM',           min: 5,         max: Infinity },
+  From3mmTo5mm:   { value: 'RANGE_3MM_5MM',          label: '=> 3 MM to < 5 MM', min: 3,         max: 5 },
+  From1mmTo3mm:   { value: 'RANGE_1MM_3MM',          label: '=> 1 MM to < 3 MM', min: 1,         max: 3 },
+  From500kTo1m:   { value: 'RANGE_500K_1MM',         label: '=> 500K to < 1 MM', min: 0.5,       max: 1 },
+  LessThan500k:   { value: 'RANGE_LESS_THAN_500K',   label: '< 500K',            min: -Infinity, max: 0.5 },
 } as const;
 
-fromGridFilterModelToFilteringSpecs: (values: string[]): FilteringSpec => {
-  if (!values || values.length === 0) return [];
-  const field = PropellantField.NotionalAmount;
+export const SizeFilter = Object.fromEntries(
+  Object.entries(sizeFilterConfig).map(([key, { value }]) => [key, value]),
+) as { readonly [K in keyof typeof sizeFilterConfig]: (typeof sizeFilterConfig)[K]['value'] };
 
-  const sizeMatchers = values.map(v => {
-    const operator = 'or';
-    const base = { operator, field };
-    const range = sizeFilterRanges[v as SizeFilterValue];
+export type SizeFilterValue = (typeof SizeFilter)[keyof typeof SizeFilter];
 
-    if (v === SizeFilter.LessThan500k) {
-      return { ...base, key: uid(), comparison: '<', value: range.max, text: range.max.toString() };
-    }
-    if (v === SizeFilter.GreaterThan5mm) {
-      return { ...base, key: uid(), comparison: '>', value: range.min, text: range.min.toString() };
-    }
-    return {
-      ...base,
-      // the rest — both min and max with 'between' or two matchers
-    };
-  });
-  // ...
-},
+export const sizeFilterLabels: Record<SizeFilterValue, string> = Object.fromEntries(
+  Object.values(sizeFilterConfig).map(c => [c.value, c.label]),
+) as Record<SizeFilterValue, string>;
+
+export const sizeFilterParseValue = (key: string): string =>
+  sizeFilterLabels[key as SizeFilterValue] ?? key;
+
+export const sizeFilterRanges: Record<SizeFilterValue, { min: number; max: number }> = Object.fromEntries(
+  Object.values(sizeFilterConfig).map(c => [c.value, { min: c.min, max: c.max }]),
+) as Record<SizeFilterValue, { min: number; max: number }>;
