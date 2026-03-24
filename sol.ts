@@ -1,22 +1,15 @@
-for (const [field, colDef] of Object.entries(columnDefsDictionary)) {
-  const extendedColDef = extendedColDefs[field];
-  const gridFilter = gridFilters?.[field];
+useEffect(() => {
+  if (!storageLoaded.current && filteringSpec) {
+    storageLoaded.current = true;
 
-  const defaultValues = gridFilter?.initialMatcher
-    ? gridFilter.toGridFilterModel(gridFilter.initialMatcher)?.[field]?.values
-    : undefined;
+    const correctedSpec = filteringSpec.map(matcher => {
+      const gridFilter = gridFilters?.[matcher.field];
+      return gridFilter?.initialMatcher ?? matcher;
+    });
 
-  columnDefsDictionary[field] = {
-    ...colDef,
-    ...(extendedColDef && {
-      ...extendedColDef,
-      ...(defaultValues && extendedColDef.filterParams && {
-        filterParams: {
-          ...extendedColDef.filterParams,
-          defaultSelection: defaultValues,
-        },
-      }),
-    }),
-    suppressHeaderMenuButton: true,
-  };
-}
+    updateQuerySpec(filters.PROPELLANT_V1_FILTERING_SPEC, {
+      filteringSpec: correctedSpec,
+    });
+    return;
+  }
+}, [filteringSpec]);
