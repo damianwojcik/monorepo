@@ -1,3 +1,5 @@
+// ./consts/sizeFilter.ts
+
 const sizeFilterConfig = {
   GreaterThan5mm: { value: 'RANGE_GREATER_THAN_5MM', label: '>= 5 MM',           min: 5,         max: Infinity },
   From3mmTo5mm:   { value: 'RANGE_3MM_5MM',          label: '=> 3 MM to < 5 MM', min: 3,         max: 5 },
@@ -12,12 +14,8 @@ export const SizeFilter = Object.fromEntries(
 
 export type SizeFilterValue = (typeof SizeFilter)[keyof typeof SizeFilter];
 
-export const sizeFilterLabels: Record<SizeFilterValue, string> = Object.fromEntries(
-  Object.values(sizeFilterConfig).map(c => [c.value, c.label]),
-) as Record<SizeFilterValue, string>;
-
 export const sizeFilterParseValue = (key: string): string =>
-  sizeFilterLabels[key as SizeFilterValue] ?? key;
+  Object.values(sizeFilterConfig).find(c => c.value === key)?.label ?? key;
 
 export const sizeFilterRanges: Record<SizeFilterValue, { min: number; max: number }> = Object.fromEntries(
   Object.values(sizeFilterConfig).map(c => [c.value, { min: c.min, max: c.max }]),
