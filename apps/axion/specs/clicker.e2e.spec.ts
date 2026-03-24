@@ -1,3 +1,0 @@
-- go to sport.pl
-- search for "axion clicker"
-- click on the first result

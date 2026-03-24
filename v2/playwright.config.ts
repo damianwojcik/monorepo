@@ -1,6 +1,0 @@
-viewport: { width: 1920, height: 1080 },
-actionTimeout: 2 * 60_000,
-screenshot: 'only-on-failure',
-video: 'on-first-retry',
-trace: 'on-first-retry',
-ignoreHTTPSErrors: true,

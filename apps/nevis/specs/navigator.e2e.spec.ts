@@ -1,3 +1,0 @@
-- go to google.com
-- search for "nevis navigator"
-- click on the first result
