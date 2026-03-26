@@ -1,6 +1,4 @@
-type GridFilterKeys = keyof typeof inColumnFiltersConfig.gridFilters;
-
 const initialFilteringSpec = filteringSpec.map(filterDef => {
-  const gridFilter = inColumnFiltersConfig.gridFilters?.[filterDef.field as GridFilterKeys];
-  return gridFilter?.initialMatcher ?? filterDef;
+  const gridFilter = inColumnFiltersConfig.gridFilters?.[filterDef.field as keyof typeof inColumnFiltersConfig.gridFilters];
+  return gridFilter?.initialQuerySpec?.filteringSpec ?? filterDef;
 });
