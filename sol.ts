@@ -13,7 +13,9 @@ export const convertGridFilterModelToFilteringSpec = (
     const values = model[colId]?.values;
 
     if (values?.length) {
-      result.push(...gridFilter.toFilteringSpec(values));
+      result.push(
+        ...gridFilter.toFilteringSpec(values).filter((matcher) => matcher !== undefined),
+      );
       continue;
     }
 
