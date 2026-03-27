@@ -1,15 +1,30 @@
-return Object.entries(gridFilters).flatMap(([colId, gridFilter]) => {
-  const values = model[colId]?.values;
+export const convertGridFilterModelToFilteringSpec = (
+  model: FilterModel,
+  gridFilters: GridFilters,
+  resetToInitial = false,
+): FilteringSpec => {
+  const result: FilteringSpec = [];
 
-  if (values?.length) {
-    return gridFilter.toFilteringSpec(values);
+  for (const [colId, gridFilter] of Object.entries(gridFilters ?? {})) {
+    if (!gridFilter) {
+      continue;
+    }
+
+    const values = model[colId]?.values;
+
+    if (values?.length) {
+      result.push(...gridFilter.toFilteringSpec(values));
+      continue;
+    }
+
+    if (resetToInitial) {
+      result.push(
+        ...(gridFilter.initialQuerySpec?.filteringSpec ?? []).filter(
+          (matcher) => matcher !== undefined,
+        ),
+      );
+    }
   }
 
-  if (resetToInitial) {
-    return (gridFilter.initialQuerySpec?.filteringSpec ?? []).filter(
-      (x): x is Matcher => Boolean(x)
-    );
-  }
-
-  return [];
-});
+  return result;
+};
