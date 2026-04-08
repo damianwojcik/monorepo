@@ -1,18 +1,1 @@
-export type SelectionMode = 'single' | 'multiple';
-
-export type SelectionOption = {
-  id: string;
-  label: string;
-  checked: boolean;
-};
-
-export const createProps = (
-  options: readonly string[],
-  labelFormatter?: (value: string) => string,
-  defaultSelection?: string[],
-): SelectionOption[] =>
-  options.map((option) => ({
-    id: option,
-    label: labelFormatter?.(option) ?? option,
-    checked: defaultSelection?.includes(option) ?? false,
-  }));
+6D6B4B69E8DD4BD1A08ED2FDAB64CE7E-C5D2A
