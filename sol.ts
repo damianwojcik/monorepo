@@ -20,16 +20,14 @@ export const getGroupId = (tradingDateAndTime: string | null | undefined) => {
   return date.isValid() ? date.format(GROUP_DISPLAY_FORMAT) : UNKNOWN_GROUP_KEY;
 };
 
-type GroupParent = BackendRow & { [CHILDREN_FIELD]: Set<string> };
-
 export const adapterCreator: worker.AdapterCreator<BackendRow> = (_context: data.RowsStoreContext) => {
-  const parents = new Map<string, GroupParent>();
+  const parents = new Map<string, BackendRow>();
 
   const logMaps = (label: string) => {
     console.log(`!!! MAPS [${label}]`, { parents });
   };
 
-  const getOrCreateGroupParent = (groupId: string): GroupParent => {
+  const getOrCreateGroupParent = (groupId: string): BackendRow => {
     let parent = parents.get(groupId);
     if (!parent) {
       const date = groupId === UNKNOWN_GROUP_KEY ? null : `${groupId}T00:00:00Z`;
@@ -40,8 +38,8 @@ export const adapterCreator: worker.AdapterCreator<BackendRow> = (_context: data
         [GROUP_BY_FIELD_FORMATTED]: displayDate,
         [GROUP_BY_FIELD_COMPARABLE]: comparableDate,
         [PATH_FIELD]: [groupId],
-        [CHILDREN_FIELD]: new Set<string>(),
-      } as GroupParent;
+        [CHILDREN_FIELD]: [],
+      } as BackendRow;
       parents.set(groupId, parent);
       logMaps(`!!! Created parent for groupId=${groupId}`);
       console.log('!!! getOrCreateGroupParent: created new parent', { parent });
@@ -50,16 +48,22 @@ export const adapterCreator: worker.AdapterCreator<BackendRow> = (_context: data
   };
 
   const assignRowIdToGroupId = (rowId: string, groupId: string) => {
-    getOrCreateGroupParent(groupId)[CHILDREN_FIELD].add(rowId);
+    const parent = getOrCreateGroupParent(groupId);
+    const children = parent[CHILDREN_FIELD] ?? [];
+    if (!children.includes(rowId)) {
+      parent[CHILDREN_FIELD] = [...children, rowId];
+    }
   };
 
   const removeRowIdFromGroup = (row: BackendRow) => {
     const groupId = getGroupId(row[GROUP_BY_FIELD]);
     const parent = parents.get(groupId);
     if (!parent) return;
-    parent[CHILDREN_FIELD].delete(row.id);
-    if (parent[CHILDREN_FIELD].size === 0) {
+    const children = (parent[CHILDREN_FIELD] ?? []).filter(id => id !== row.id);
+    if (children.length === 0) {
       parents.delete(groupId);
+    } else {
+      parent[CHILDREN_FIELD] = children;
     }
   };
 
@@ -77,7 +81,7 @@ export const adapterCreator: worker.AdapterCreator<BackendRow> = (_context: data
     if (value !== undefined) {
       const newGroupId = getGroupId(value);
       const oldGroupId = [...parents.values()]
-        .find(p => p[CHILDREN_FIELD].has(rowId))?.id;
+        .find(p => p[CHILDREN_FIELD]?.includes(rowId))?.id;
       if (oldGroupId && oldGroupId !== newGroupId) {
         removeRowIdFromGroup(row);
       }
@@ -93,7 +97,7 @@ export const adapterCreator: worker.AdapterCreator<BackendRow> = (_context: data
   };
 
   const getParentGroupId = (child: BackendRow): string =>
-    [...parents.values()].find(p => p[CHILDREN_FIELD].has(child.id))?.id
+    [...parents.values()].find(p => p[CHILDREN_FIELD]?.includes(child.id))?.id
     ?? getGroupId(child[GROUP_BY_FIELD]);
 
   return {
@@ -108,8 +112,8 @@ export const adapterCreator: worker.AdapterCreator<BackendRow> = (_context: data
     },
     getChildrenIds(parent: BackendRow) {
       const childrenIds = parents.get(parent.id)?.[CHILDREN_FIELD];
-      return childrenIds
-        ? (Array.from(childrenIds) as [string, ...string[]])
+      return childrenIds && childrenIds.length > 0
+        ? (childrenIds as [string, ...string[]])
         : ([parent.id] as [string, ...string[]]);
     },
     getRowDeltaMessage: (json: any) => {
