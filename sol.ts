@@ -1,5 +1,4 @@
 import moment from 'moment';
-import { data, worker } from '@ubs.fi.axion-framework/common';
 import { backendDateFormat } from '../common/dates';
 import { PropellantField } from './field';
 import type { BackendRow } from './fieldSchema';
