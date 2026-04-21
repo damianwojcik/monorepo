@@ -6,9 +6,10 @@ getRowDeltaMessage: (json: any) => {
     remove: json?.remove?.map(processRemoveRow),
   };
 
-  const parentUpdates = [...groups.values()];
-  console.log('!!! parentUpdates count:', parentUpdates.length, 'parents:', parentUpdates.map(p => p.id));
-  result.update = [...(result.update || []), ...parentUpdates];
+  // Check if parents are in matchedParents
+  for (const [id, parent] of context.matchedParents) {
+    console.log('!!! matchedParent:', id, 'deltaSize:', (parent as any).deltaSize);
+  }
 
   return result;
 },
