@@ -1,19 +1,12 @@
-const recalculateParentAggValues = (groupId: string) => {
-  const parent = groups.get(groupId);
-  if (!parent) return;
-
-  const childIds = parent[CHILDREN_FIELD]!;
-  const children = childIds.map(id => childRows.get(id)).filter((r): r is BackendRow => r !== undefined);
-
-  if (children.length > 0) {
-    const aggValues = computeAggregatedValues(children, aggregationConfig);
-    console.log('!!! recalculate - groupId:', groupId, 'before deltaSize:', parent.deltaSize, 'new deltaSize:', (aggValues as any).deltaSize);
-    Object.assign(parent, aggValues);
-    console.log('!!! recalculate - after deltaSize:', parent.deltaSize);
+const existing = childRows.get(rowId);
+if (existing) {
+  for (const [key, val] of Object.entries(row)) {
+    if (key in aggregationConfig && typeof val === 'string') {
+      (existing as any)[key] = parseFloat(val);
+    } else {
+      (existing as any)[key] = val;
+    }
   }
-};
-
-for (const [id, parent] of groups) {
-  context.matchedParents.set(id, parent);
-  console.log('!!! sync matchedParents - id:', id, 'deltaSize:', (parent as any).deltaSize);
+} else {
+  childRows.set(rowId, row);
 }
