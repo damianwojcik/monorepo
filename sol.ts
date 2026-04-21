@@ -14,7 +14,6 @@ const processUpdateRow = (row: BackendRow): BackendRow => {
     assignRowIdToGroupId(rowId, newGroupId);
   }
 
-  // Merge partial update into existing stored row
   const existing = childRows.get(rowId);
   if (existing) {
     Object.assign(existing, row);
@@ -22,10 +21,14 @@ const processUpdateRow = (row: BackendRow): BackendRow => {
     childRows.set(rowId, row);
   }
 
-  const parentGroupId = getParentGroupId(row);
-  if (parentGroupId) {
-    console.log('!!! processUpdateRow - row:', rowId, 'parentGroupId:', parentGroupId);
-    recalculateParent(parentGroupId);
+  // Only recalculate if the update touches any aggregated field
+  const hasAggField = Object.keys(row).some((key) => key in aggConfig);
+  if (hasAggField) {
+    const parentGroupId = getParentGroupId(row);
+    if (parentGroupId) {
+      console.log('!!! processUpdateRow - recalculating, row:', rowId, 'parentGroupId:', parentGroupId);
+      recalculateParent(parentGroupId);
+    }
   }
 
   return row;
