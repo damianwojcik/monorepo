@@ -1,79 +1,54 @@
+const withParentSorting = (
+  comparator: sorting.SortComparator<data.UnknownRow>,
+  aggField?: string,
+  aggFunc?: string,
+): sorting.SortComparator<data.UnknownRow> => {
+  return (rowA: data.UnknownRow, rowB: data.UnknownRow) => {
+    const parentA = childToParent?.get(rowA.id as string);
+    const parentB = childToParent?.get(rowB.id as string);
 
+    if (parentA && parentB) {
+      if (parentA === parentB) return sorting.Tie;
 
-// TODO: 'any'
-const createSortComparator = (sortDirection: any, sortConfig: any) => {
-  const direction = sortDirection === sorting.SortDirectionAscending ? 1 : -1;
-  if ('simple' in sortConfig) {
-    return withDirection(sortConfig.simple, direction);
-  }
-  if ('directional' in sortConfig) {
-    return sortConfig.directional(direction);
-  }
-};
-
-export const createCombinedComparator = (
-  config: worker.InternalConfig,
-  sorters: SortingSpec,
-  map: Map<string, data.UnknownRow>,
-  parentsMap: Map<string, data.UnknownRow>,
-): CombinedComparator | null => {
-  const childToParent = new Map<string, data.UnknownRow>();
-  for (const [, parent] of parentsMap) {
-    const children = (parent as any)['#children'] as string[] | undefined;
-    if (children) {
-      for (const childId of children) {
-        childToParent.set(childId, parent);
-      }
-    }
-  }
-
-  const withAggregation = (
-    comparator: sorting.SortComparator<data.UnknownRow>,
-  ): sorting.SortComparator<data.UnknownRow> => {
-    return (rowA: data.UnknownRow, rowB: data.UnknownRow) => {
-      const parentA = childToParent.get(rowA.id as string);
-      const parentB = childToParent.get(rowB.id as string);
-
-      if (parentA && parentB) {
-        if (parentA === parentB) return sorting.Tie;
-        return comparator(parentA, parentB);
+      // If field has aggregation, compare using the active agg value
+      if (aggField && aggFunc) {
+        const aggA = (parentA as any)[aggField]?.[aggFunc] as number ?? 0;
+        const aggB = (parentB as any)[aggField]?.[aggFunc] as number ?? 0;
+        if (aggA < aggB) return -1 as sorting.ComparatorResult;
+        if (aggA > aggB) return 1 as sorting.ComparatorResult;
+        return sorting.Tie;
       }
 
-      return comparator(rowA, rowB);
-    };
-  };
-
-  const createFieldCompare = (sortField: SorterDef): sorting.SortComparator<data.UnknownRow> => {
-    const { direction: sortDirection } = sortField;
-
-    const field = sortField.field;
-    const fieldConfig = config.fields[field];
-    const sortConfig = fieldConfig?.search?.sort;
-    const adapterAggFunc = config.fields[field]?.adapterAggFunc;
-
-    if (sortConfig) {
-      return adapterAggFunc
-        ? withAggregation(createSortComparator(sortDirection, sortConfig))
-        : createSortComparator(sortDirection, sortConfig);
+      return comparator(parentA, parentB);
     }
 
-    return sorting.dummyComparator;
+    return comparator(rowA, rowB);
   };
-
-  const comparators = sorters?.map(createFieldCompare).filter(Boolean) ?? [];
-
-  return comparators.length > 0
-    ? (idA, idB) => {
-        const rowA = map.get(idA)!;
-        const rowB = map.get(idB)!;
-        for (let comparator of comparators) {
-          const result = comparator(rowA, rowB);
-          if (result !== sorting.Tie) {
-            return result;
-          }
-        }
-        return 0;
-      }
-    : null;
 };
 
+const createFieldCompare = (sortField: SorterDef): sorting.SortComparator<data.UnknownRow> => {
+  const { direction: sortDirection } = sortField;
+
+  const field = sortField.field;
+  const fieldConfig = config.fields[field];
+  const sortConfig = fieldConfig?.search?.sort;
+
+  if (!sortConfig) return sorting.dummyComparator;
+
+  const comparator = createSortComparator(sortDirection, sortConfig);
+
+  if (!config.enableParentSorting) {
+    return comparator;
+  }
+
+  const adapterAggFunc = fieldConfig?.adapterAggFunc;
+  if (adapterAggFunc) {
+    // Field has aggregation — sort parents by their active agg value
+    // Agg object key convention: fieldName + 'Agg' e.g. 'deltaSize' -> 'deltaSizeAgg'
+    const aggField = field + 'Agg';
+    return withParentSorting(comparator, aggField, adapterAggFunc);
+  }
+
+  // Parent sorting without aggregation
+  return withParentSorting(comparator);
+};
