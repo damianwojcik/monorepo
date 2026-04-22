@@ -1,44 +1,19 @@
-const withAggregation = (
-  comparator: sorting.SortComparator<data.UnknownRow>,
-): sorting.SortComparator<data.UnknownRow> => {
-  return (rowA: data.UnknownRow, rowB: data.UnknownRow) => {
-    const parentA = parentsMap.get(rowA.id as string);
-    const parentB = parentsMap.get(rowB.id as string);
+const comparators = sorters?.map(createFieldCompare).filter(Boolean) ?? [];
 
-    console.log('!!! withAggregation', {
-      idA: rowA.id,
-      idB: rowB.id,
-      isParentA: !!parentA,
-      isParentB: !!parentB,
-    });
+console.log('!!! comparators count:', comparators.length);
 
-    if (parentA && parentB) {
-      const result = comparator(parentA, parentB);
-      console.log('!!! parent compare result:', result);
-      return result;
+return comparators.length > 0
+  ? (idA, idB) => {
+      const rowA = map.get(idA)!;
+      const rowB = map.get(idB)!;
+      console.log('!!! comparing ids:', idA, idB, 'rowA:', !!rowA, 'rowB:', !!rowB);
+      for (let comparator of comparators) {
+        const result = comparator(rowA, rowB);
+        if (result !== sorting.Tie) {
+          console.log('!!! result:', result);
+          return result;
+        }
+      }
+      return 0;
     }
-
-    return comparator(rowA, rowB);
-  };
-};
-
-const createFieldCompare = (sortField: SorterDef): sorting.SortComparator<data.UnknownRow> => {
-  const { direction: sortDirection } = sortField;
-  const field = sortField.field;
-  const fieldConfig = config.fields[field];
-  const sortConfig = fieldConfig?.search?.sort;
-  const adapterAggFunc = config.fields[field]?.adapterAggFunc;
-
-  console.log('!!! createFieldCompare', { field, adapterAggFunc, hasSortConfig: !!sortConfig });
-
-  if (sortConfig) {
-    const comparator = createComparator(sortDirection, sortConfig);
-    if (!comparator) return sorting.dummyComparator;
-    console.log('!!! using', adapterAggFunc ? 'withAggregation' : 'default comparator');
-    return adapterAggFunc
-      ? withAggregation(comparator)
-      : comparator;
-  }
-
-  return sorting.dummyComparator;
-};
+  : null;
