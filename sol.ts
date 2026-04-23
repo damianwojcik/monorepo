@@ -1,28 +1,45 @@
-export const computeAggregatedValues = (
-  children: BackendRow[],
-  aggConfig: AggConfig,
-): Partial<BackendRow> => {
-  const result: Partial<BackendRow> = {};
+type AggFunc = 'none' | 'avg' | 'count' | 'first' | 'last' | 'max' | 'min' | 'sum';
 
-  for (const [fieldKey, aggFunc] of Object.entries(aggConfig)) {
-    const values = children
-      .map(child => (child as Record<string, unknown>)[fieldKey])
-      .filter((v): v is number => typeof v === 'number');
+function buildAggSubMenu(params): MenuItemDef[] {
+  const col = params.column;
+  const currentAgg = col.getAggFunc() ?? 'none';
 
-    if (values.length > 0) {
-      // Active agg value on the field itself
-      (result as any)[fieldKey] = aggFunctions[aggFunc](values);
+  const options: { label: string; value: AggFunc }[] = [
+    { label: 'None',    value: 'none'  },
+    { label: 'Average', value: 'avg'   },
+    { label: 'Count',   value: 'count' },
+    { label: 'First',   value: 'first' },
+    { label: 'Last',    value: 'last'  },
+    { label: 'Max',     value: 'max'   },
+    { label: 'Min',     value: 'min'   },
+    { label: 'Sum',     value: 'sum'   },
+  ];
 
-      // All aggregations under %fieldKey
-      (result as any)[`%${fieldKey}`] = {
-        sum: aggFunctions.sum(values),
-        min: aggFunctions.min(values),
-        max: aggFunctions.max(values),
-        first: aggFunctions.first(values),
-        last: aggFunctions.last(values),
-      };
-    }
-  }
+  return options.map(({ label, value }) => ({
+    name: label,
+    // Checkmark on the active one
+    icon: value === currentAgg
+      ? '<span class="ag-icon ag-icon-tick"/>'
+      : '<span style="display:inline-block;width:12px"/>',
+    action: () => {
+      if (value === 'none') {
+        params.api.applyColumnState({
+          state: [{ colId: col.getId(), aggFunc: null }],
+        });
+      } else {
+        params.api.applyColumnState({
+          state: [{ colId: col.getId(), aggFunc: value }],
+        });
+      }
+      // Re-render to update checkmark
+      params.api.refreshHeader();
+    },
+  }));
+}
 
-  return result;
-};
+
+    {
+      name: 'Value Aggregation',
+      icon: '<span class="ag-icon ag-icon-aggregation"/>',
+      subMenu: buildAggSubMenu(params),
+    },
