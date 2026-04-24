@@ -1,45 +1,37 @@
-type AggFunc = 'none' | 'avg' | 'count' | 'first' | 'last' | 'max' | 'min' | 'sum';
+export type AggregationFunc = 'none' | 'avg' | 'count' | 'first' | 'last' | 'max' | 'min' | 'sum';
 
-function buildAggSubMenu(params): MenuItemDef[] {
-  const col = params.column;
-  const currentAgg = col.getAggFunc() ?? 'none';
+export const aggFunctions: Record<AggregationFunc, (values: number[]) => number | undefined> = {
+  none: (_vals) => undefined,
+  avg: (vals) => vals.reduce((a, b) => a + b, 0) / vals.length,
+  count: (vals) => vals.length,
+  first: (vals) => vals[0],
+  last: (vals) => vals[vals.length - 1],
+  max: (vals) => Math.max(...vals),
+  min: (vals) => Math.min(...vals),
+  sum: (vals) => vals.reduce((a, b) => a + b, 0),
+};
 
-  const options: { label: string; value: AggFunc }[] = [
-    { label: 'None',    value: 'none'  },
-    { label: 'Average', value: 'avg'   },
-    { label: 'Count',   value: 'count' },
-    { label: 'First',   value: 'first' },
-    { label: 'Last',    value: 'last'  },
-    { label: 'Max',     value: 'max'   },
-    { label: 'Min',     value: 'min'   },
-    { label: 'Sum',     value: 'sum'   },
-  ];
+export const computeAggregatedValues = (children: BackendRow[]): Partial<BackendRow> => {
+  const result: Partial<BackendRow> = {};
 
-  return options.map(({ label, value }) => ({
-    name: label,
-    // Checkmark on the active one
-    icon: value === currentAgg
-      ? '<span class="ag-icon ag-icon-tick"/>'
-      : '<span style="display:inline-block;width:12px"/>',
-    action: () => {
-      if (value === 'none') {
-        params.api.applyColumnState({
-          state: [{ colId: col.getId(), aggFunc: null }],
-        });
-      } else {
-        params.api.applyColumnState({
-          state: [{ colId: col.getId(), aggFunc: value }],
-        });
-      }
-      // Re-render to update checkmark
-      params.api.refreshHeader();
-    },
-  }));
-}
+  for (const [fieldKey, aggFunc] of Object.entries(aggConfig)) {
+    const values = children
+      .map((child) => (child as Record<string, unknown>)[fieldKey])
+      .filter((v): v is number => typeof v === 'number');
 
+    // TODO: any
+    if (values.length > 0) {
+      // active
+      (result as any)[fieldKey] = search.aggFunctions[aggFunc](values);
+      (result as any)[`%${fieldKey}`] = {
+        sum: search.aggFunctions.sum(values),
+        min: search.aggFunctions.min(values),
+        max: search.aggFunctions.max(values),
+        first: search.aggFunctions.first(values),
+        last: search.aggFunctions.last(values),
+      };
+    }
+  }
 
-    {
-      name: 'Value Aggregation',
-      icon: '<span class="ag-icon ag-icon-aggregation"/>',
-      subMenu: buildAggSubMenu(params),
-    },
+  return result;
+};
