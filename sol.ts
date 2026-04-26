@@ -1,29 +1,44 @@
-export const aggFunctions = {
-  none:  { label: 'None',    fn: (_vals: number[]) => undefined },
-  avg:   { label: 'Average', fn: (vals: number[]) => vals.reduce((a, b) => a + b, 0) / vals.length },
-  count: { label: 'Count',   fn: (vals: number[]) => vals.length },
-  first: { label: 'First',   fn: (vals: number[]) => vals[0] },
-  last:  { label: 'Last',    fn: (vals: number[]) => vals[vals.length - 1] },
-  max:   { label: 'Max',     fn: (vals: number[]) => Math.max(...vals) },
-  min:   { label: 'Min',     fn: (vals: number[]) => Math.min(...vals) },
-  sum:   { label: 'Sum',     fn: (vals: number[]) => vals.reduce((a, b) => a + b, 0) },
-} satisfies Record<AggregationFunc, { label: string; fn: (values: number[]) => number | undefined }>;
+// aggregation.ts
+
+export type AggregationFunc = 'none' | 'avg' | 'count' | 'first' | 'last' | 'max' | 'min' | 'sum';
+
+type AggFuncEntry = { label: string; default?: true };
+
+type BaseFieldAggConfig = Partial<Record<AggregationFunc, AggFuncEntry>>;
+
+type DefaultKeys<T extends BaseFieldAggConfig> = {
+  [K in keyof T]: T[K] extends { default: true } ? K : never;
+}[keyof T];
+
+type ValidateOneDefault<T extends BaseFieldAggConfig> =
+  DefaultKeys<T> extends infer D
+    ? [D] extends [never]
+      ? T
+      : D extends AggregationFunc
+        ? [Exclude<DefaultKeys<T>, D>] extends [never]
+          ? T
+          : "Error: only one entry may have default: true"
+        : never
+    : never;
+
+export type FieldAggConfig<T extends BaseFieldAggConfig> =
+  ValidateOneDefault<T> extends string
+    ? { _error: ValidateOneDefault<T> }
+    : T;
 
 
+    // fields.ts
+import type { FieldAggConfig } from './aggregation';
 
-// options for the menu
-const options = (Object.keys(aggFunctions) as AggregationFunc[]).map((value) => ({
-  label: aggFunctions[value].label,
-  value,
-}));
+// ✅ OK
+const myConfig = {
+  sum: { label: 'Sum' },
+  min: { label: 'Min', default: true as const },
+  count: { label: 'Count' },
+} satisfies FieldAggConfig<typeof myConfig>;
 
-// calling a function
-aggFunctions[aggFunc].fn(values);
-
-(result as any)[`%${fieldKey}`] = Object.fromEntries(
-  (Object.keys(search.aggFunctions) as search.AggregationFunc[]).map((key) => [
-    key,
-    search.aggFunctions[key].fn(values),
-  ])
-);
-(result as any)[fieldKey] = search.aggFunctions[aggFunc].fn(values);
+// ❌ Type error: { _error: "Error: only one entry may have default: true" }
+const badConfig = {
+  sum: { label: 'Total', default: true as const },
+  min: { label: 'Min', default: true as const },
+} satisfies FieldAggConfig<typeof badConfig>;
