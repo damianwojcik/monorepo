@@ -5,38 +5,25 @@ const withParentSorting = (
   const parentProxy = (parent: data.UnknownRow): data.UnknownRow => {
     if (parent[field] !== undefined) return parent;
     const childIds = parent[CHILDREN_FIELD] as string[] | undefined;
-    if (!childIds) {
-      console.log('!!! parentProxy: parent has no children', { parentId: parent.id, field });
-      return parent;
-    }
+    if (!childIds) return parent;
     for (const childId of childIds) {
       const child = map.get(childId);
       if (child && child[field] !== undefined) return child;
     }
-    console.log('!!! parentProxy: no child had the field', { parentId: parent.id, field });
     return parent;
   };
 
   return (rowA, rowB) => {
-    const parentA = childToParent.get(rowA.id);
-    const parentB = childToParent.get(rowB.id);
-    const effectiveA = parentA ?? rowA;
-    const effectiveB = parentB ?? rowB;
+    const parentA = childToParent.get(rowA.id) ?? rowA;
+    const parentB = childToParent.get(rowB.id) ?? rowB;
 
-    if (effectiveA.id !== effectiveB.id) {
-      const proxyA = parentProxy(effectiveA);
-      const proxyB = parentProxy(effectiveB);
-      const result = comparator(proxyA, proxyB);
-      console.log('!!! parent-vs-parent compare', {
-        aId: effectiveA.id,
-        bId: effectiveB.id,
-        aValue: proxyA[field],
-        bValue: proxyB[field],
-        field,
-        result,
-      });
-      return result;
+    if (parentA.id !== parentB.id) {
+      // Different groups → order by parent's proxy value
+      return comparator(parentProxy(parentA), parentProxy(parentB));
     }
-    return comparator(rowA, rowB);
+    // Same group → order children by the field directly
+  const result = comparator(rowA, rowB);
+  console.log('!!! child-vs-child', { aId: rowA.id, bId: rowB.id, aValue: rowA[field], bValue: rowB[field], parent: parentA.id, result });
+  return result;
   };
 };
