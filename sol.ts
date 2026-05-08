@@ -1,34 +1,50 @@
 const withParentSorting = (
   comparator: sorting.SortComparator<data.UnknownRow>,
-  sortField: SorterDef,  // pass this in
+  sortField: SorterDef,
 ): sorting.SortComparator<data.UnknownRow> => {
   const field = sortField.field;
-  const direction = sortField.direction;
 
-  // Resolve a value for any row — parent or child — for this field.
   const resolveValue = (row: data.UnknownRow): unknown => {
     const direct = row[field];
-    if (direct !== undefined) return direct;
+    if (direct !== undefined) {
+      return direct;
+    }
 
-    // Parent without this field: derive from children.
     const childIds = row[CHILDREN_FIELD] as string[] | undefined;
-    if (!childIds) return undefined;
+    if (!childIds) {
+      console.log('!!! resolveValue: parent has no children and no field', { rowId: row.id, field });
+      return undefined;
+    }
 
     let best: unknown = undefined;
+    let bestFromChildId: string | undefined;
     for (const childId of childIds) {
       const child = map.get(childId);
-      if (!child) continue;
+      if (!child) {
+        console.log('!!! resolveValue: child id not in map', { parentId: row.id, childId });
+        continue;
+      }
       const v = child[field];
       if (v === undefined) continue;
-      if (best === undefined) { best = v; continue; }
-      // For ascending sort, parent should represent the min of children
-      // (so the group with the earliest child sorts first); for descending, max.
+      if (best === undefined) {
+        best = v;
+        bestFromChildId = childId;
+        continue;
+      }
       const cmp = comparator(
         { [field]: v } as data.UnknownRow,
         { [field]: best } as data.UnknownRow,
       );
-      if (cmp < 0) best = v;
+      if (cmp < 0) {
+        best = v;
+        bestFromChildId = childId;
+      }
     }
+
+    if (best === undefined) {
+      console.log('!!! resolveValue: no child had the field', { parentId: row.id, field, childCount: childIds.length });
+    }
+
     return best;
   };
 
@@ -37,14 +53,23 @@ const withParentSorting = (
     const effectiveB = childToParent.get(rowB.id) ?? rowB;
 
     if (effectiveA.id !== effectiveB.id) {
-      // Compare parents by their resolved values
       const va = resolveValue(effectiveA);
       const vb = resolveValue(effectiveB);
+
+      if (va === undefined || vb === undefined) {
+        console.log('!!! parent compare with undefined value', {
+          aId: effectiveA.id, va,
+          bId: effectiveB.id, vb,
+          field,
+        });
+      }
+
       return comparator(
         { [field]: va } as data.UnknownRow,
         { [field]: vb } as data.UnknownRow,
       );
     }
+
     return comparator(rowA, rowB);
   };
 };
