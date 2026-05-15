@@ -1,7 +1,13 @@
 
-
-export const getGroupId = (input: string | null | undefined): string =>
-  input || 'unknown';
+export const getGroupId = (input: unknown): string => {
+  if (input === null || input === undefined) {
+    return 'unknown';
+  }
+  if (Array.isArray(input)) {
+    return input.join(',');
+  }
+  return String(input);
+};
 
 export const pathField = '#path';
 export const childrenField = '#children';
@@ -30,7 +36,10 @@ export const extendAdapter = <TRow extends data.UnknownRow>(
       getGroupId((row as Record<string, any>)[field]),
     );
 
-  const buildParentFields = (level: number, groupId: string): Record<string, unknown> => {
+  const buildParentFields = (
+    level: number,
+    groupId: string,
+  ): Record<string, unknown> => {
     const fields: Record<string, unknown> = {};
     for (let i = 0; i < groupByFields.length; i++) {
       const field = groupByFields[i]!;

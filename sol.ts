@@ -8,7 +8,6 @@ type ExtendRowsMapperOptions = {
   groupByFields?: string[];
 };
 
-// Deterministic id from path so AG Grid preserves expand state across renders.
 const parentIdForPath = (path: string[]): string =>
   `__grp__${path.join('|')}`;
 
@@ -107,7 +106,6 @@ export const extendRowsMapper = <TRow extends data.UnknownRow>(
           };
           node.children.set(groupId, child);
           node.order.push(groupId);
-          // Register this parent as a child of its parent (one level up).
           if (node.level >= 0) {
             const parentChildren = (node.parentRow as Record<string, any>)[
               childrenField
@@ -124,6 +122,7 @@ export const extendRowsMapper = <TRow extends data.UnknownRow>(
       ] as string[];
       leafChildren.push(row.id);
       (row as Record<string, any>)[pathField] = [...ancestorIds, row.id];
+      (row as Record<string, any>)[childrenField] = [];
     }
 
     const tuples: Tuple[] = [];
@@ -131,11 +130,7 @@ export const extendRowsMapper = <TRow extends data.UnknownRow>(
 
     const walk = (node: TreeNode): boolean => {
       if (node.level >= 0) {
-        if (rowsCount + 1 > maxRows) {
-          return false;
-        }
         tuples.push([node.parentRow] as Tuple);
-        rowsCount += 1;
       }
 
       if (node.level === groupByFields.length - 1) {
