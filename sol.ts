@@ -1,8 +1,8 @@
 
 import {
-  getGroupId,
   pathField,
   childrenField,
+  getGroupId,
 } from './temp-worker-extension-adapter';
 
 type ExtendRowsMapperOptions = {
@@ -32,8 +32,8 @@ export const extendRowsMapper = <TRow extends data.UnknownRow>(
     type TreeNode = {
       groupId: string;
       level: number;
-      parentId: string; // id of the synthesized parent row at this level
-      parentRow: TRow; // synthesized parent row
+      parentId: string;
+      parentRow: TRow;
       children: Map<string, TreeNode>;
       rows: TRow[];
       order: string[];
@@ -101,50 +101,43 @@ export const extendRowsMapper = <TRow extends data.UnknownRow>(
         node = child;
       }
       node.rows.push(row);
-      // Track this row as a child of the leaf parent
       const leafChildren = (node.parentRow as Record<string, any>)[
         childrenField
       ] as string[];
       leafChildren.push(row.id);
-      // Patch the row's #path to use our synthesized parent ids
       (row as Record<string, any>)[pathField] = [...ancestorIds, row.id];
     }
 
     const tuples: Tuple[] = [];
     let rowsCount = 0;
 
-    const walk = (
-      node: TreeNode,
-      parentsSoFar: TRow[],
-    ): boolean => {
+    // Emit each parent and each leaf bucket exactly once, in DFS order.
+    const walk = (node: TreeNode): boolean => {
+      // Emit this parent as a standalone single-row tuple (unless root).
+      if (node.level >= 0) {
+        if (rowsCount + 1 > maxRows) {
+          return false;
+        }
+        tuples.push([node.parentRow] as Tuple);
+        rowsCount += 1;
+      }
+
       if (node.level === groupByFields.length - 1) {
+        // Leaf level: emit the children rows as one tuple.
         if (node.rows.length === 0) {
           return true;
         }
-        const tuple: TRow[] = [];
-        if (includeParent) {
-          tuple.push(...parentsSoFar);
-        }
-        tuple.push(node.parentRow);
-        tuple.push(...node.rows);
-
-        if (rowsCount + tuple.length > maxRows) {
+        if (rowsCount + node.rows.length > maxRows) {
           return false;
         }
-        rowsCount += tuple.length;
-        tuples.push(tuple as Tuple);
+        tuples.push([...node.rows] as Tuple);
+        rowsCount += node.rows.length;
         return true;
       }
 
       for (const childGroupId of node.order) {
         const child = node.children.get(childGroupId)!;
-        const nextParents = includeParent
-          ? [...parentsSoFar, node.parentRow]
-          : parentsSoFar;
-        // For top-level (level 0) children, the "parent" is the synthesized
-        // level-0 parent itself, not root. So we start parentsSoFar empty and
-        // push as we descend.
-        const cont = walk(child, nextParents);
+        const cont = walk(child);
         if (!cont) {
           return false;
         }
@@ -154,8 +147,7 @@ export const extendRowsMapper = <TRow extends data.UnknownRow>(
 
     for (const topGroupId of root.order) {
       const topNode = root.children.get(topGroupId)!;
-      // Top-level parent has no ancestors yet
-      const cont = walk(topNode, []);
+      const cont = walk(topNode);
       if (!cont) {
         break;
       }
