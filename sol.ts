@@ -1,4 +1,3 @@
-
 import {
   pathField,
   childrenField,
@@ -8,6 +7,10 @@ import {
 type ExtendRowsMapperOptions = {
   groupByFields?: string[];
 };
+
+// Deterministic id from path so AG Grid preserves expand state across renders.
+const parentIdForPath = (path: string[]): string =>
+  `__grp__${path.join('|')}`;
 
 export const extendRowsMapper = <TRow extends data.UnknownRow>(
   prevRowsMapper: worker.RowsMapper<TRow>,
@@ -54,9 +57,10 @@ export const extendRowsMapper = <TRow extends data.UnknownRow>(
     const synthesizeParent = (
       level: number,
       groupId: string,
+      groupPath: string[],
       ancestorIds: string[],
     ): TRow => {
-      const id = uid();
+      const id = parentIdForPath(groupPath);
       return {
         id,
         ...buildParentFields(level, groupId),
@@ -78,13 +82,20 @@ export const extendRowsMapper = <TRow extends data.UnknownRow>(
     for (const row of rowsToGroup) {
       let node = root;
       const ancestorIds: string[] = [];
+      const groupPathSoFar: string[] = [];
       for (let level = 0; level < groupByFields.length; level++) {
         const groupId = getGroupId(
           (row as Record<string, any>)[groupByFields[level]!],
         );
+        groupPathSoFar.push(groupId);
         let child = node.children.get(groupId);
         if (!child) {
-          const parentRow = synthesizeParent(level, groupId, ancestorIds);
+          const parentRow = synthesizeParent(
+            level,
+            groupId,
+            [...groupPathSoFar],
+            ancestorIds,
+          );
           child = {
             groupId,
             level,
@@ -96,6 +107,13 @@ export const extendRowsMapper = <TRow extends data.UnknownRow>(
           };
           node.children.set(groupId, child);
           node.order.push(groupId);
+          // Register this parent as a child of its parent (one level up).
+          if (node.level >= 0) {
+            const parentChildren = (node.parentRow as Record<string, any>)[
+              childrenField
+            ] as string[];
+            parentChildren.push(child.parentId);
+          }
         }
         ancestorIds.push(child.parentId);
         node = child;
@@ -111,9 +129,7 @@ export const extendRowsMapper = <TRow extends data.UnknownRow>(
     const tuples: Tuple[] = [];
     let rowsCount = 0;
 
-    // Emit each parent and each leaf bucket exactly once, in DFS order.
     const walk = (node: TreeNode): boolean => {
-      // Emit this parent as a standalone single-row tuple (unless root).
       if (node.level >= 0) {
         if (rowsCount + 1 > maxRows) {
           return false;
@@ -123,7 +139,6 @@ export const extendRowsMapper = <TRow extends data.UnknownRow>(
       }
 
       if (node.level === groupByFields.length - 1) {
-        // Leaf level: emit the children rows as one tuple.
         if (node.rows.length === 0) {
           return true;
         }
