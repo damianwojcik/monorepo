@@ -1,199 +1,145 @@
-import React, {
-  forwardRef,
-  useCallback,
-  useEffect,
-  useImperativeHandle,
-  useMemo,
-  useState,
-} from 'react';
 
-import {
-  CheckboxGroup,
-  RadioButton,
-  RadioButtonGroup,
-  SearchInput,
-  UDS,
-} from '@uwn/react-widgets';
 
-import { createProps, type SelectionMode, type SelectionOption } from './createProps';
-import type { FilterComponentForwardRefModel, FilterComponentProps } from '../../types';
-import s from './index.module.scss';
-
-type Props = FilterComponentProps & {
-  mode: SelectionMode;
+type ExtendRowsMapperOptions = {
+  groupByFields?: string[];
 };
 
-export const SelectionFilter = forwardRef<FilterComponentForwardRefModel, Props>(
-  (
-    {
-      defaultOptions,
-      onChange,
-      filterLabelFormatter,
-      field,
-      hideSearchInput,
-      defaultSelection,
-      mode,
-    },
-    ref,
-  ) => {
-    const [options, setOptions] = useState<SelectionOption[]>(
-      createProps(defaultOptions, filterLabelFormatter, defaultSelection),
+export const extendRowsMapper = <TRow extends data.UnknownRow>(
+  prevRowsMapper: worker.RowsMapper<TRow>,
+  options?: ExtendRowsMapperOptions,
+): worker.RowsMapper<TRow> => {
+  const groupByFields = options?.groupByFields ?? [];
+  if (groupByFields.length === 0) {
+    return prevRowsMapper;
+  }
+
+  return (allContexts, rows, maxRows, includeParent) => {
+    type Tuple = ReturnType<worker.RowsMapper<TRow>>[number];
+
+    const tuplesWithoutParent = prevRowsMapper(
+      allContexts,
+      rows,
+      Number.POSITIVE_INFINITY,
+      false,
     );
-    const [searchInput, setSearchInput] = useState('');
+    const rowsToGroup = tuplesWithoutParent.flat();
 
-    useImperativeHandle(ref, () => ({
-      onSetModel: (selectedIds: string[]) => {
-        const normalizedIds = selectedIds.map((id) => id.toLowerCase());
+    type TreeNode = {
+      groupId: string;
+      level: number;
+      children: Map<string, TreeNode>;
+      rows: TRow[];
+      order: string[];
+    };
 
-        setOptions((prev) => {
-          if (mode === 'single') {
-            const selectedId = normalizedIds[0];
+    const root: TreeNode = {
+      groupId: '__root__',
+      level: -1,
+      children: new Map(),
+      rows: [],
+      order: [],
+    };
 
-            return prev.map((option) => ({
-              ...option,
-              checked: option.id.toLowerCase() === selectedId,
-            }));
+    for (const row of rowsToGroup) {
+      let node = root;
+      for (let level = 0; level < groupByFields.length; level++) {
+        const groupId = getGroupId(
+          (row as Record<string, any>)[groupByFields[level]!],
+        );
+        let child = node.children.get(groupId);
+        if (!child) {
+          child = {
+            groupId,
+            level,
+            children: new Map(),
+            rows: [],
+            order: [],
+          };
+          node.children.set(groupId, child);
+          node.order.push(groupId);
+        }
+        node = child;
+      }
+      node.rows.push(row);
+    }
+
+    const findParentForPath = (path: string[]): TRow | undefined => {
+      for (const context of allContexts) {
+        for (const [, parentRow] of context.matchedParents) {
+          let matches = true;
+          for (let level = 0; level < path.length; level++) {
+            if (
+              getGroupId(
+                (parentRow as Record<string, any>)[groupByFields[level]!],
+              ) !== path[level]
+            ) {
+              matches = false;
+              break;
+            }
           }
+          if (matches) {
+            return parentRow as TRow;
+          }
+        }
+      }
+      return undefined;
+    };
 
-          return prev.map((option) => ({
-            ...option,
-            checked: normalizedIds.includes(option.id.toLowerCase()),
-          }));
-        });
-      },
-    }));
+    const tuples: Tuple[] = [];
+    let rowsCount = 0;
 
-    useEffect(() => {
-      const selectedValues = options
-        .filter((option) => option.checked)
-        .map((option) => option.id);
+    const walk = (
+      node: TreeNode,
+      pathSoFar: string[],
+      parentsSoFar: TRow[],
+    ): boolean => {
+      if (node.level === groupByFields.length - 1) {
+        if (node.rows.length === 0) {
+          return true;
+        }
+        const tuple: TRow[] = [];
+        if (includeParent) {
+          tuple.push(...parentsSoFar);
+        }
+        tuple.push(...node.rows);
 
-      onChange(selectedValues);
-    }, [onChange, options]);
-
-    useEffect(() => {
-      return () => setSearchInput('');
-    }, []);
-
-    const handleCheckboxChange = useCallback(
-      ({ checked, id }: { checked: boolean; id: string }) => {
-        setOptions((prev) =>
-          prev.map((option) =>
-            option.id === id ? { ...option, checked } : option,
-          ),
-        );
-      },
-      [],
-    );
-
-    const handleRadioChange = useCallback((event: any) => {
-      const selectedId = event?.target?.value;
-
-      if (!selectedId) {
-        return;
+        if (tuple.length === 0) {
+          return true;
+        }
+        if (rowsCount + tuple.length > maxRows) {
+          return false;
+        }
+        rowsCount += tuple.length;
+        tuples.push(tuple as Tuple);
+        return true;
       }
 
-      setOptions((prev) =>
-        prev.map((option) => ({
-          ...option,
-          checked: option.id === selectedId,
-        })),
-      );
-    }, []);
-
-    const handleSearch = useCallback(
-      ({ target: { value } }: any) => setSearchInput(value),
-      [],
-    );
-
-    const filteredOptions = useMemo(() => {
-      const normalizedSearch = searchInput.toLowerCase().trim();
-
-      const result = options.filter((option) =>
-        option.label.toLowerCase().trim().includes(normalizedSearch),
-      );
-
-      if (mode === 'multiple') {
-        return [...result].sort((a, b) =>
-          a.checked === b.checked ? 0 : a.checked ? -1 : 1,
-        );
+      for (const childGroupId of node.order) {
+        const child = node.children.get(childGroupId)!;
+        const childPath = [...pathSoFar, child.groupId];
+        let nextParents = parentsSoFar;
+        if (includeParent) {
+          const parentRow = findParentForPath(childPath);
+          if (parentRow) {
+            nextParents = [...parentsSoFar, parentRow];
+          }
+        }
+        const cont = walk(child, childPath, nextParents);
+        if (!cont) {
+          return false;
+        }
       }
+      return true;
+    };
 
-      return result;
-    }, [mode, options, searchInput]);
+    for (const topGroupId of root.order) {
+      const topNode = root.children.get(topGroupId)!;
+      const cont = walk(topNode, [topGroupId], []);
+      if (!cont) {
+        break;
+      }
+    }
 
-    const checkboxItems = useMemo(
-      () =>
-        filteredOptions.map((option) => ({
-          id: option.id,
-          label: option.label,
-          checked: option.checked,
-        })),
-      [filteredOptions],
-    );
-
-    const radioItems = useMemo(
-      () =>
-        filteredOptions.map((option) => ({
-          value: option.id,
-          label: option.label,
-        })),
-      [filteredOptions],
-    );
-
-    const selectedValue = useMemo(
-      () => options.find((option) => option.checked)?.id ?? '',
-      [options],
-    );
-
-    return (
-      <UDS type={UDS.type.HD} size={UDS.size.SMALL}>
-        <div
-          data-testid={`main-grid-column-filter--${field}`}
-          className={s.wrapper}
-        >
-          {!hideSearchInput && (
-            <div className={s.searchInputWrapper}>
-              <SearchInput
-                data-testid="main-grid-column-filter--input"
-                spaceSaving
-                placeholder="Search"
-                clearButtonLabel="Clear"
-                aria-label="Search"
-                name={`search-input-${mode}-filter`}
-                value={searchInput}
-                onChange={handleSearch}
-                autoFocus
-                width="auto"
-              />
-            </div>
-          )}
-
-          {mode === 'multiple' ? (
-            <div className={s.checkboxFilterList}>
-              <CheckboxGroup
-                data-testid="column-filter--checkbox-options"
-                alignment="vertical"
-                checkBoxes={checkboxItems}
-                id="checkbox-filter-vertical"
-                onChange={handleCheckboxChange}
-              />
-            </div>
-          ) : (
-            <div className={s.radioButtonFilterList}>
-              <RadioButtonGroup
-                name="radiobuttongroup-vertical"
-                onChange={handleRadioChange}
-                selectedValue={selectedValue || defaultSelection?.[0]}
-              >
-                {radioItems.map((item) => (
-                  <RadioButton {...item} key={item.value} />
-                ))}
-              </RadioButtonGroup>
-            </div>
-          )}
-        </div>
-      </UDS>
-    );
-  },
-);
+    return tuples;
+  };
+};

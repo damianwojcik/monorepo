@@ -1,161 +1,4 @@
 
-type ExtendRowsMapperOptions = {
-  groupByFields?: string[];
-};
-
-export const extendRowsMapper = <TRow extends data.UnknownRow>(
-  prevRowsMapper: worker.RowsMapper<TRow>,
-  options?: ExtendRowsMapperOptions,
-): worker.RowsMapper<TRow> => {
-  const groupByFields = options?.groupByFields ?? [];
-  if (groupByFields.length === 0) {
-    return prevRowsMapper;
-  }
-
-  return (allContexts, rows, maxRows, includeParent) => {
-    type Tuple = ReturnType<worker.RowsMapper<TRow>>[number];
-
-    const tuplesWithoutParent = prevRowsMapper(
-      allContexts,
-      rows,
-      Number.POSITIVE_INFINITY,
-      false,
-    );
-    const rowsToGroup = tuplesWithoutParent.flat();
-
-    // Build nested tree: Map keyed by groupId at each level
-    type TreeNode = {
-      groupId: string;
-      level: number;
-      children: Map<string, TreeNode>; // for non-leaf levels
-      rows: TRow[]; // populated only at leaf level
-      order: string[]; // preserves insertion order of children
-    };
-
-    const root: TreeNode = {
-      groupId: '__root__',
-      level: -1,
-      children: new Map(),
-      rows: [],
-      order: [],
-    };
-
-    for (const row of rowsToGroup) {
-      let node = root;
-      for (let level = 0; level < groupByFields.length; level++) {
-        const field = groupByFields[level];
-        const groupId = getGroupId((row as any)[field]);
-        let child = node.children.get(groupId);
-        if (!child) {
-          child = {
-            groupId,
-            level,
-            children: new Map(),
-            rows: [],
-            order: [],
-          };
-          node.children.set(groupId, child);
-          node.order.push(groupId);
-        }
-        node = child;
-      }
-      node.rows.push(row);
-    }
-
-    // Find parent rows for each level by scanning context.matchedParents.
-    // matchedParents contains all group parents; we match by checking each
-    // groupByField value on the parent row.
-    const findParentForPath = (path: string[]): TRow | undefined => {
-      const targetLevel = path.length - 1;
-      const targetField = groupByFields[targetLevel];
-      for (const context of allContexts) {
-        for (const [, parentRow] of context.matchedParents) {
-          let matches = true;
-          for (let level = 0; level < path.length; level++) {
-            if (
-              getGroupId((parentRow as any)[groupByFields[level]]) !==
-              path[level]
-            ) {
-              matches = false;
-              break;
-            }
-          }
-          if (matches) {
-            return parentRow as TRow;
-          }
-        }
-      }
-      return undefined;
-    };
-
-    const tuples: Tuple[] = [];
-    let rowsCount = 0;
-
-    // Depth-first walk: at each leaf, emit a tuple containing the full parent
-    // chain (if includeParent) followed by the leaf rows.
-    const walk = (
-      node: TreeNode,
-      pathSoFar: string[],
-      parentsSoFar: TRow[],
-    ): boolean => {
-      if (node.level === groupByFields.length - 1) {
-        // Leaf
-        if (node.rows.length === 0) {
-          return true;
-        }
-        const tuple: TRow[] = [];
-        if (includeParent) {
-          tuple.push(...parentsSoFar);
-        }
-        tuple.push(...node.rows);
-
-        if (tuple.length === 0) {
-          return true;
-        }
-        if (rowsCount + tuple.length > maxRows) {
-          return false; // stop the walk
-        }
-        rowsCount += tuple.length;
-        tuples.push(tuple as Tuple);
-        return true;
-      }
-
-      // Non-leaf: recurse children in insertion order
-      for (const childGroupId of node.order) {
-        const child = node.children.get(childGroupId)!;
-        const childPath = [...pathSoFar, child.groupId];
-        let nextParents = parentsSoFar;
-        if (includeParent) {
-          const parentRow = findParentForPath(childPath);
-          if (parentRow) {
-            nextParents = [...parentsSoFar, parentRow];
-          }
-        }
-        const cont = walk(child, childPath, nextParents);
-        if (!cont) {
-          return false;
-        }
-      }
-      return true;
-    };
-
-    for (const topGroupId of root.order) {
-      const topNode = root.children.get(topGroupId)!;
-      const cont = walk(topNode, [topGroupId], []);
-      if (!cont) {
-        break;
-      }
-    }
-
-    return tuples;
-  };
-};
-
-
-
-
-
-//////////////////////////////////////
 export const getGroupId = (input: string | null | undefined): string =>
   input || 'unknown';
 
@@ -198,9 +41,10 @@ export const extendAdapter = <TRow extends data.UnknownRow>(
 
       if (!parent) {
         const id = uid();
+        const levelField = groupByFields[level]!;
         parent = {
           id,
-          [groupByFields[level]]: groupPath[level],
+          [levelField]: groupPath[level],
           [pathField]: [...parentIds, id],
           [childrenField]: [] as string[],
         } as unknown as TRow;
@@ -221,22 +65,6 @@ export const extendAdapter = <TRow extends data.UnknownRow>(
     return parents;
   };
 
-  const removeRowIdFromLeaf = (rowId: string, leafPathKey: string): void => {
-    const leaf = groupsByPath.get(leafPathKey);
-    if (!leaf) {
-      return;
-    }
-    const children = ((leaf as Record<string, any>)[childrenField] ??
-      []) as string[];
-    const filtered = children.filter((id) => id !== rowId);
-    (leaf as Record<string, any>)[childrenField] = filtered;
-
-    // Auto-cleanup empty parents bottom-up
-    if (filtered.length === 0) {
-      cleanupEmptyChain(leafPathKey);
-    }
-  };
-
   const cleanupEmptyChain = (pathKey: string): void => {
     const segments = pathKey.split('|');
     for (let level = segments.length - 1; level >= 0; level--) {
@@ -250,7 +78,6 @@ export const extendAdapter = <TRow extends data.UnknownRow>(
       if (children.length > 0) {
         break;
       }
-      // Detach from parent (if any) and delete
       if (level > 0) {
         const parentKey = segments.slice(0, level).join('|');
         const parent = groupsByPath.get(parentKey);
@@ -267,10 +94,25 @@ export const extendAdapter = <TRow extends data.UnknownRow>(
     }
   };
 
-  const attachRowToChain = (row: TRow): TRow[] => {
+  const removeRowIdFromLeaf = (rowId: string, leafPathKey: string): void => {
+    const leaf = groupsByPath.get(leafPathKey);
+    if (!leaf) {
+      return;
+    }
+    const children = ((leaf as Record<string, any>)[childrenField] ??
+      []) as string[];
+    const filtered = children.filter((id) => id !== rowId);
+    (leaf as Record<string, any>)[childrenField] = filtered;
+
+    if (filtered.length === 0) {
+      cleanupEmptyChain(leafPathKey);
+    }
+  };
+
+  const attachRowToChain = (row: TRow): void => {
     const groupPath = getGroupPath(row);
     const parents = getOrCreateParentChain(groupPath);
-    const leaf = parents[parents.length - 1];
+    const leaf = parents[parents.length - 1]!;
     const leafChildren = (leaf as Record<string, any>)[
       childrenField
     ] as string[];
@@ -281,14 +123,7 @@ export const extendAdapter = <TRow extends data.UnknownRow>(
       ...((leaf as Record<string, any>)[pathField] as string[]),
       row.id,
     ];
-    rowIdToLeafPathKey.set(
-      row.id,
-      pathKeyOf(
-        groupPath,
-        groupPath.length - 1,
-      ),
-    );
-    return parents;
+    rowIdToLeafPathKey.set(row.id, pathKeyOf(groupPath, groupPath.length - 1));
   };
 
   const processAddRow = (row: TRow): TRow => {
@@ -311,7 +146,7 @@ export const extendAdapter = <TRow extends data.UnknownRow>(
         removeRowIdFromLeaf(rowId, oldLeafKey);
       }
       const parents = getOrCreateParentChain(newGroupPath);
-      const leaf = parents[parents.length - 1];
+      const leaf = parents[parents.length - 1]!;
       const leafChildren = (leaf as Record<string, any>)[
         childrenField
       ] as string[];
@@ -344,7 +179,6 @@ export const extendAdapter = <TRow extends data.UnknownRow>(
     if (leafKey) {
       return groupsByPath.get(leafKey);
     }
-    // Fallback: compute from child's fields
     const groupPath = getGroupPath(child);
     return groupsByPath.get(pathKeyOf(groupPath, groupPath.length - 1));
   };
@@ -356,16 +190,14 @@ export const extendAdapter = <TRow extends data.UnknownRow>(
       groupsByPath.clear();
       rowIdToLeafPathKey.clear();
     },
-    getParentId(child: TRow) {
+    getParentId(child: TRow): string | undefined {
       const parent = getParentByChild(child);
-      return parent
-        ? (parent as Record<string, any>).id
-        : undefined;
+      return parent ? (parent as Record<string, any>).id : undefined;
     },
-    getParent(child: TRow) {
+    getParent(child: TRow): TRow | undefined {
       return getParentByChild(child);
     },
-    getChildrenIds(parent: TRow) {
+    getChildrenIds(parent: TRow): string[] {
       const children = ((parent as Record<string, any>)[childrenField] ??
         []) as string[];
       return children.length > 0
