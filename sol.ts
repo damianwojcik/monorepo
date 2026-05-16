@@ -1,33 +1,47 @@
-const GroupLevelRenderer = (params: community.ICellRendererParams & { level: number }) => {
-  const rowLevel = getRowLevel(params.data);
-  const isThisLevel = rowLevel === params.level;
+class GroupLevelRenderer implements community.ICellRendererComp {
+  private eGui!: HTMLElement;
 
-  if (!isThisLevel) {
-    return <span>{params.valueFormatted ?? params.value ?? ''}</span>;
+  init(params: community.ICellRendererParams & { level: number }) {
+    this.eGui = document.createElement('span');
+    this.render(params);
   }
 
-  const node = params.node;
-  const expandable = node.expandable ?? (node.allChildrenCount ?? 0) > 0;
+  private render(params: community.ICellRendererParams & { level: number }) {
+    this.eGui.innerHTML = '';
+    this.eGui.style.display = 'flex';
+    this.eGui.style.alignItems = 'center';
+    this.eGui.style.gap = '4px';
 
-  return (
-    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-      {expandable && (
-        <span
-          className={`ag-icon ${node.expanded ? 'ag-icon-tree-open' : 'ag-icon-tree-closed'}`}
-          onClick={() => node.setExpanded(!node.expanded)}
-          style={{ cursor: 'pointer' }}
-        />
-      )}
-      <span>{params.valueFormatted ?? params.value ?? ''}</span>
-    </span>
-  );
-};
+    const rowLevel = getRowLevel(params.data);
+    const value = params.valueFormatted ?? params.value ?? '';
 
-const getGroupRendererForLevel = (level: number): Partial<community.ColDef> => ({
-  cellRenderer: GroupLevelRenderer,
-  cellRendererParams: { level },
-});
+    if (rowLevel !== params.level) {
+      this.eGui.textContent = String(value);
+      return;
+    }
 
-// in updateColumnDefs:
-const level = groupByFields.indexOf(colDef.field);
-return { ...colDef, ...getGroupRendererForLevel(level) };
+    const node = params.node;
+    const expandable = node.expandable ?? (node.allChildrenCount ?? 0) > 0;
+
+    if (expandable) {
+      const chevron = document.createElement('span');
+      chevron.className = `ag-icon ${node.expanded ? 'ag-icon-tree-open' : 'ag-icon-tree-closed'}`;
+      chevron.style.cursor = 'pointer';
+      chevron.addEventListener('click', () => node.setExpanded(!node.expanded));
+      this.eGui.appendChild(chevron);
+    }
+
+    const label = document.createElement('span');
+    label.textContent = String(value);
+    this.eGui.appendChild(label);
+  }
+
+  getGui(): HTMLElement {
+    return this.eGui;
+  }
+
+  refresh(params: community.ICellRendererParams & { level: number }): boolean {
+    this.render(params);
+    return true;
+  }
+}
