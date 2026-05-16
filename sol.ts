@@ -1,43 +1,33 @@
-import { pathField } from './temp-worker-extension-adapter';
+const GroupLevelRenderer = (params: community.ICellRendererParams & { level: number }) => {
+  const rowLevel = getRowLevel(params.data);
+  const isThisLevel = rowLevel === params.level;
 
-// Helper: which level is this row at?
-// level-0 parent → #path.length === 1
-// level-1 parent → #path.length === 2
-// leaf          → #path.length === N+1 where N is groupByFields.length
-const getRowLevel = (data: Record<string, unknown>): number => {
-  const path = (data?.[pathField] as string[] | undefined) ?? [];
-  return path.length - 1;
+  if (!isThisLevel) {
+    return <span>{params.valueFormatted ?? params.value ?? ''}</span>;
+  }
+
+  const node = params.node;
+  const expandable = node.expandable ?? (node.allChildrenCount ?? 0) > 0;
+
+  return (
+    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+      {expandable && (
+        <span
+          className={`ag-icon ${node.expanded ? 'ag-icon-tree-open' : 'ag-icon-tree-closed'}`}
+          onClick={() => node.setExpanded(!node.expanded)}
+          style={{ cursor: 'pointer' }}
+        />
+      )}
+      <span>{params.valueFormatted ?? params.value ?? ''}</span>
+    </span>
+  );
 };
 
-// Reusable factory for any groupBy column at a given level
-const groupByColumnRenderer = (level: number) => ({
-  cellRendererSelector: (params: { data?: Record<string, unknown> }) => {
-    if (!params.data) {
-      return undefined;
-    }
-    if (getRowLevel(params.data) === level) {
-      return {
-        component: 'agGroupCellRenderer',
-        params: {
-          suppressCount: true,
-          suppressDoubleClickExpand: false,
-        },
-      };
-    }
-    return undefined; // default cell renderer for non-parent rows
-  },
+const getGroupRendererForLevel = (level: number): Partial<community.ColDef> => ({
+  cellRenderer: GroupLevelRenderer,
+  cellRendererParams: { level },
 });
 
-// SOURCE is groupByFields[0] → level 0
-{
-  field: 'SOURCE',
-  headerName: 'Source',
-  ...groupByColumnRenderer(0),
-}
-
-// TRANSACTION_FLAGS is groupByFields[1] → level 1
-{
-  field: 'TRANSACTION_FLAGS',
-  headerName: 'Transaction Flags',
-  ...groupByColumnRenderer(1),
-}
+// in updateColumnDefs:
+const level = groupByFields.indexOf(colDef.field);
+return { ...colDef, ...getGroupRendererForLevel(level) };
