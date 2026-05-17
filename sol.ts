@@ -1,27 +1,25 @@
 
-import { childrenField, stringifyValue, pathField } from './common';
-
 type ExtendAdapterOptions = {
   groupByFields?: string[];
 };
 
 /**
- * A "group node" is a synthetic parent row we invent so AG Grid can render a
- * tree. It is a normal row plus two tree fields. Note the vocabulary:
- *   - "group"  = one of these synthetic nodes (a level in the tree).
- *   - "parent" = the relationship role: the group node directly ABOVE a child.
- * A group node IS a parent TO its children; same objects, different concepts.
+ * A "group row" is a synthetic parent row we invent so AG Grid can render a
+ * tree. It is a normal row plus two tree fields. Vocabulary matters here:
+ *   - "group"  = one of these synthetic rows (a level/node in the tree).
+ *   - "parent" = the relationship role: the group row directly ABOVE a child.
+ * A group row IS a parent TO its children - same objects, different concepts.
  */
-type GroupNode<TRow> = TRow & {
+type GroupRow<TRow> = TRow & {
   [childrenField]: string[];
   [pathField]: string[];
 };
 
-/** A path key is the joined string form of a group path ("Europe--Poland"). */
-type PathKey = string & { readonly __brand: 'PathKey' };
-
-/** Separator used to turn a path array into a single PathKey. */
+/** Separator used to turn a group path array into a single id string. */
 export const DIVIDER = '--';
+
+/** ["Europe", "Poland"] -> "Europe--Poland". The id OF a group row. */
+const getIdFromPath = (path: string[]): string => path.join(DIVIDER);
 
 export const extendAdapter = <TRow extends data.UnknownRow>(
   prevAdapter: worker.Adapter<TRow>,
@@ -37,92 +35,95 @@ export const extendAdapter = <TRow extends data.UnknownRow>(
   // ----------------------------------------------------------------------
   // STATE - the ONE map.
   // ----------------------------------------------------------------------
-  // Key = PathKey of the group. Value = the group node living at that path.
-  const groups = new Map<PathKey, GroupNode<TRow>>();
+  // Key = the group's id (its joined path). Value = the group row itself.
+  const groups = new Map<string, GroupRow<TRow>>();
 
   // ----------------------------------------------------------------------
-  // PATH HELPERS - turning a data row into "where it belongs in the tree"
+  // SMALL HELPERS
   // ----------------------------------------------------------------------
 
-  /** ["Europe", "Poland"] -> "Europe--Poland" as a PathKey. */
-  const toKey = (path: string[]): PathKey => path.join(DIVIDER) as PathKey;
-
-  /** A data row's group path is just its grouping field values, in order. */
-  const groupPathOf = (row: TRow): string[] =>
+  /** A data row's group path = its grouping field values, in order. */
+  const getGroupPath = (row: TRow): string[] =>
     groupByFields.map((field) => stringifyValue(row[field]));
 
-  /** Read a group node's children id list (never undefined). */
-  const childrenOf = (group: GroupNode<TRow>): string[] =>
+  /** Read a group row's children id list (never undefined). */
+  const childrenOf = (group: GroupRow<TRow>): string[] =>
     group[childrenField] ?? [];
 
   // ----------------------------------------------------------------------
-  // GROUP NODE HELPERS
+  // GROUP ROW HELPERS
   // ----------------------------------------------------------------------
 
   /**
-   * Make sure a group node exists for the path truncated to `level`, creating
-   * it (with the right field values) if missing. Returns the group node.
+   * Make sure a group row exists for the path truncated to `level`, creating
+   * it (with the right field values) if missing. Returns the group row.
    */
-  const ensureGroup = (path: string[], level: number): GroupNode<TRow> => {
-    const key = toKey(path.slice(0, level + 1));
-    const existing = groups.get(key);
+  const getOrCreateGroupRow = (
+    groupPath: string[],
+    level: number,
+  ): GroupRow<TRow> => {
+    const id = getIdFromPath(groupPath.slice(0, level));
+    const existing = groups.get(id);
     if (existing) {
       return existing;
     }
 
-    console.log('!!! creating group node:', key);
+    console.log('!!! creating group row:', id);
 
     // The group's own grouping fields: filled up to `level`, null below.
     const fields = Object.fromEntries(
-      groupByFields.map((field, i) => [field, i <= level ? path[i] : null]),
+      groupByFields.map((field, idx) => [
+        field,
+        idx < level ? groupPath[idx] : null,
+      ]),
     );
 
-    const group = {
-      id: uid(),
+    const groupRow = {
+      id,
       ...fields,
-      [pathField]: path.slice(0, level + 1),
+      [pathField]: groupPath.slice(0, level),
       [childrenField]: [] as string[],
-    } as unknown as GroupNode<TRow>;
+    } as unknown as GroupRow<TRow>;
 
-    groups.set(key, group);
-    return group;
+    groups.set(id, groupRow);
+    return groupRow;
   };
 
   /**
    * Walk a row's full path from the top, creating every missing group on the
-   * way, and link parent -> child at each level. Returns the leaf group's key.
+   * way, and link parent -> child at each level. Returns the leaf group's id.
    */
-  const ensureChainForRow = (path: string[]): PathKey => {
-    let parentKey: PathKey | null = null;
+  const ensureChainForRow = (groupPath: string[]): string => {
+    let parentId: string | null = null;
 
-    for (const [level] of path.entries()) {
-      const group = ensureGroup(path, level);
-      const key = toKey(path.slice(0, level + 1));
+    for (const [level] of groupPath.entries()) {
+      const groupRow = getOrCreateGroupRow(groupPath, level + 1);
+      const groupId = getIdFromPath(groupPath.slice(0, level + 1));
 
       // Link this group as a child of the group one level up (its parent).
-      if (parentKey !== null) {
-        const parent = groups.get(parentKey)!;
-        const siblings = childrenOf(parent);
-        if (!siblings.includes(group.id)) {
-          siblings.push(group.id);
-          console.log('!!! linked group', key, 'under parent', parentKey);
+      if (parentId !== null) {
+        const parent = groups.get(parentId)!;
+        const children = childrenOf(parent);
+        if (!children.includes(groupRow.id)) {
+          children.push(groupRow.id);
+          console.log('!!! linked group', groupId, 'under parent', parentId);
         }
       }
-      parentKey = key;
+      parentId = groupId;
     }
 
-    return parentKey!; // last key visited = the leaf
+    return parentId!; // last id visited = the leaf
   };
 
   /**
-   * Find the group node that currently holds a data row, by scanning the
+   * Find the group row that currently holds a data row, by scanning the
    * groups map for the one whose children include `rowId`. Simple and
    * uniform - same approach as the single-level reference adapter.
    */
-  const findGroupOfRow = (rowId: string): GroupNode<TRow> | undefined => {
-    for (const group of groups.values()) {
-      if (childrenOf(group).includes(rowId)) {
-        return group;
+  const findGroupOfRow = (rowId: string): GroupRow<TRow> | undefined => {
+    for (const groupRow of groups.values()) {
+      if (childrenOf(groupRow).includes(rowId)) {
+        return groupRow;
       }
     }
     return undefined;
@@ -130,55 +131,58 @@ export const extendAdapter = <TRow extends data.UnknownRow>(
 
   /** Add a real data row into the tree, building its parent chain. */
   const addRowToGroups = (row: TRow): void => {
-    const path = groupPathOf(row);
-    const leafKey = ensureChainForRow(path);
+    const groupPath = getGroupPath(row);
+    const leafId = ensureChainForRow(groupPath);
 
-    const leaf = groups.get(leafKey)!;
+    const leaf = groups.get(leafId)!;
     const leafChildren = childrenOf(leaf);
     if (!leafChildren.includes(row.id)) {
       leafChildren.push(row.id);
     }
 
     // Tell the row its AG Grid tree path.
-    (row as GroupNode<TRow>)[pathField] = [...path, row.id];
+    (row as GroupRow<TRow>)[pathField] = [...groupPath, row.id];
 
-    console.log('!!! added row', row.id, 'to group', leafKey);
+    console.log('!!! added row', row.id, 'to group', leafId);
   };
 
   /**
-   * Detach a row id from one group node, then delete that group (and its
-   * ancestors) if they became empty. `group` is the row's direct parent.
+   * Detach a row id from its parent group, then delete that parent (and its
+   * ancestors) if they became empty. `parent` is the row's direct parent.
    */
-  const detachAndPrune = (rowId: string, group: GroupNode<TRow>): void => {
-    group[childrenField] = childrenOf(group).filter((id) => id !== rowId);
-    console.log('!!! detached', rowId, 'from group', toKey(group[pathField]));
+  const removeRowFromGroups = (
+    rowId: string,
+    parent: GroupRow<TRow>,
+  ): void => {
+    parent[childrenField] = childrenOf(parent).filter((id) => id !== rowId);
+    console.log('!!! removed row', rowId, 'from group', parent.id);
 
     // Walk up the chain (leaf -> root): drop groups that have no children.
-    const segments = group[pathField];
+    const segments = parent[pathField];
     const levelsTopDown = [...segments.keys()];
 
     for (const level of levelsTopDown.reverse()) {
-      const key = toKey(segments.slice(0, level + 1));
-      const node = groups.get(key);
-      if (!node) {
+      const groupId = getIdFromPath(segments.slice(0, level + 1));
+      const groupRow = groups.get(groupId);
+      if (!groupRow) {
         continue;
       }
 
       // Still used -> stop, everything above it is fine too.
-      if (childrenOf(node).length > 0) {
+      if (childrenOf(groupRow).length > 0) {
         break;
       }
 
-      groups.delete(key);
-      console.log('!!! deleted empty group', key);
+      groups.delete(groupId);
+      console.log('!!! deleted empty group', groupId);
 
       // Unlink it from its parent's children list.
       const parentSegments = segments.slice(0, level);
       if (parentSegments.length > 0) {
-        const parent = groups.get(toKey(parentSegments));
+        const parent = groups.get(getIdFromPath(parentSegments));
         if (parent) {
           parent[childrenField] = childrenOf(parent).filter(
-            (id) => id !== node.id,
+            (id) => id !== groupRow.id,
           );
         }
       }
@@ -196,22 +200,21 @@ export const extendAdapter = <TRow extends data.UnknownRow>(
   };
 
   /**
-   * Update: the row may have moved to a different group (photo-2 semantics).
-   * Find where it WAS, compare to where it should BE, relocate if different.
+   * Update: a row may have moved to a different group. Find where it WAS,
+   * compare to where it should BE now, relocate it if the group changed.
    */
   const processUpdateRow = (
     row: worker.UpdatedRow<TRow>,
   ): worker.UpdatedRow<TRow> => {
     const updatedRow = row as unknown as TRow;
-    const newLeafKey = toKey(groupPathOf(updatedRow));
+    const newLeafId = getIdFromPath(getGroupPath(updatedRow));
     const oldGroup = findGroupOfRow(updatedRow.id);
-    const oldLeafKey = oldGroup ? toKey(oldGroup[pathField]) : undefined;
 
-    if (oldLeafKey === newLeafKey) {
-      // Same group: only the tree path field needs refreshing.
+    if (oldGroup?.id === newLeafId) {
+      // Same group: just refresh the tree path field.
       console.log('!!! processUpdateRow', updatedRow.id, '(same group)');
-      (updatedRow as GroupNode<TRow>)[pathField] = [
-        ...groupPathOf(updatedRow),
+      (updatedRow as GroupRow<TRow>)[pathField] = [
+        ...getGroupPath(updatedRow),
         updatedRow.id,
       ];
       return row;
@@ -221,12 +224,12 @@ export const extendAdapter = <TRow extends data.UnknownRow>(
       '!!! processUpdateRow',
       updatedRow.id,
       'moved:',
-      oldLeafKey,
+      oldGroup?.id,
       '->',
-      newLeafKey,
+      newLeafId,
     );
     if (oldGroup) {
-      detachAndPrune(updatedRow.id, oldGroup);
+      removeRowFromGroups(updatedRow.id, oldGroup);
     }
     addRowToGroups(updatedRow);
     return row;
@@ -236,9 +239,9 @@ export const extendAdapter = <TRow extends data.UnknownRow>(
     row: worker.RemovedRow<TRow>,
   ): worker.RemovedRow<TRow> => {
     console.log('!!! processRemoveRow', row.id);
-    const group = findGroupOfRow(row.id);
-    if (group) {
-      detachAndPrune(row.id, group);
+    const parent = findGroupOfRow(row.id);
+    if (parent) {
+      removeRowFromGroups(row.id, parent);
     } else {
       console.log('!!! processRemoveRow: no group found for', row.id);
     }
@@ -258,20 +261,25 @@ export const extendAdapter = <TRow extends data.UnknownRow>(
       groups.clear();
     },
 
-    /** A group node's parent id, or a data row's parent group id. */
+    /** The parent group of a child - works for both group rows and data rows. */
     getParentId(child: TRow): string | undefined {
-      // If `child` is itself a group node, its parent is one level up.
-      const childPath = (child as Partial<GroupNode<TRow>>)[pathField];
+      // If `child` is itself a group row, its parent is one level up.
+      const childPath = (child as Partial<GroupRow<TRow>>)[pathField];
       if (childPath && childPath.length > 1) {
-        return groups.get(toKey(childPath.slice(0, -1)))?.id;
+        return groups.get(getIdFromPath(childPath.slice(0, -1)))?.id;
       }
       // Otherwise `child` is a real data row: find the group holding it.
       return findGroupOfRow(child.id)?.id;
     },
 
-    getChildrenIds(parent: TRow): string[] {
-      // A group node exposes its children list directly.
-      const group = parent as Partial<GroupNode<TRow>>;
+    getParent(child: TRow): TRow | undefined {
+      const parentId = this.getParentId(child);
+      return parentId ? groups.get(parentId) : undefined;
+    },
+
+    getChildrenIds(node: TRow): string[] {
+      // A group row exposes its children list directly.
+      const group = node as Partial<GroupRow<TRow>>;
       if (group[childrenField]) {
         return group[childrenField];
       }
