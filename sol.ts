@@ -1,23 +1,13 @@
+import { DIVIDER } from './common';
+import { childrenField, stringifyValue, pathField } from './common';
 
 type ExtendRowsMapperOptions = {
   groupByFields?: string[];
 };
 
-/**
- * One node of the grouping tree we build to emit rows in depth-first order.
- * The tree is derived entirely from each row's `pathField` (stamped by the
- * adapter) - this mapper does NOT synthesize parents or recompute paths.
- *   - `groupRow` : the synthetic parent row emitted for this node (null at root).
- *   - `children` : child nodes, keyed by their group id.
- *   - `order`    : child group ids in first-seen order (stable output).
- *   - `rows`     : real leaf data rows that belong directly to this node.
- */
-type TreeNode<TRow> = {
-  groupRow: TRow | null;
-  children: Map<string, TreeNode<TRow>>;
-  order: string[];
-  rows: TRow[];
-};
+/** A group node's id, derived from its path: "__grp__A--B". */
+const parentIdForPath = (path: string[]): string =>
+  `__grp__${path.join(DIVIDER)}`;
 
 export const extendRowsMapper = <TRow extends data.UnknownRow>(
   prevRowsMapper: worker.RowsMapper<TRow>,
@@ -30,33 +20,52 @@ export const extendRowsMapper = <TRow extends data.UnknownRow>(
     return prevRowsMapper;
   }
 
-  const createNode = (groupRow: TRow | null): TreeNode<TRow> => ({
+  /**
+   * One node of the grouping tree we build to emit rows depth-first.
+   *   - `groupRow` : the synthetic parent row for this node (null at root).
+   *   - `children` : child nodes keyed by group id.
+   *   - `order`    : child group ids in first-seen order (stable output).
+   *   - `rows`     : real leaf data rows directly under this node.
+   */
+  type TreeNode = {
+    groupRow: TRow | null;
+    children: Map<string, TreeNode>;
+    order: string[];
+    rows: TRow[];
+  };
+
+  const createNode = (groupRow: TRow | null): TreeNode => ({
     groupRow,
     children: new Map(),
     order: [],
     rows: [],
   });
 
+  /** Read a row's children-id list as a typed array (no casts at call sites). */
+  const childrenOf = (row: TRow): string[] =>
+    (row[childrenField] as string[] | undefined) ?? [];
+
   /**
-   * Build the synthetic parent row for a group id, derived from a child row.
-   * The group id IS the parent's id - no uid(), no path recomputation. The
-   * adapter already put everything we need on the child's `pathField`.
-   * Grouping-field values are copied from the child (shared by the whole
-   * group); fields deeper than this group's level are nulled out.
+   * Build the synthetic parent row for a group. Its id IS the path id; its
+   * grouping fields are filled at this level only (deeper levels stay null).
+   * `buildParentFields` used to be a separate helper - inlined here.
    */
-  const getGroupRow = (childRow: TRow, groupId: string): TRow => {
-    const path = (childRow[pathField] as string[] | undefined) ?? [];
-    const level = path.indexOf(groupId); // depth of this group
+  const synthesizeParent = (
+    level: number,
+    groupId: string,
+    ancestorIds: string[],
+  ): TRow => {
+    const id = parentIdForPath([...ancestorIds, groupId]);
 
     const fields: Record<string, unknown> = {};
-    groupByFields.forEach((field, idx) => {
-      fields[field] = idx <= level ? stringifyValue(childRow[field]) : null;
-    });
+    for (const [i, field] of groupByFields.entries()) {
+      fields[field] = i === level ? groupId : null;
+    }
 
     return {
-      id: groupId,
+      id,
       ...fields,
-      [pathField]: path.slice(0, level + 1),
+      [pathField]: [...ancestorIds, id],
       [childrenField]: [] as string[],
     } as unknown as TRow;
   };
@@ -64,7 +73,6 @@ export const extendRowsMapper = <TRow extends data.UnknownRow>(
   return (allContexts, rows, maxRows, _includeParent) => {
     type Tuple = ReturnType<worker.RowsMapper<TRow>>[number];
 
-    // Flatten whatever the previous mapper produced into a plain row list.
     const tuplesWithoutParent = prevRowsMapper(
       allContexts,
       rows,
@@ -73,32 +81,46 @@ export const extendRowsMapper = <TRow extends data.UnknownRow>(
     );
     const rowsToGroup = tuplesWithoutParent.flat();
 
+    console.log('!!! rowsToGroup', rowsToGroup);
+
     // ------------------------------------------------------------------
-    // PASS 1 - build the tree from each row's path.
+    // PASS 1 - build the grouping tree.
     // ------------------------------------------------------------------
-    // A row's path looks like ['__grp__A', '__grp__A--B', '<rowId>']:
-    // every segment except the last is a group id; the last is the row.
-    // The adapter already stamped this onto the row - we just read it.
     const root = createNode(null);
 
     for (const row of rowsToGroup) {
-      const path = (row[pathField] as string[] | undefined) ?? [];
-      const groupIds = path.slice(0, -1); // drop the trailing leaf row id
-
-      // Walk down the group ids, creating missing nodes as we go.
       let node = root;
-      for (const groupId of groupIds) {
+      const ancestorIds: string[] = [];
+
+      // Walk each grouping level, creating the group node if missing.
+      for (const [level, field] of groupByFields.entries()) {
+        const groupId = stringifyValue(
+          (row as Record<string, unknown>)[field],
+        );
+
         let child = node.children.get(groupId);
         if (!child) {
-          child = createNode(getGroupRow(row, groupId));
+          const groupRow = synthesizeParent(level, groupId, ancestorIds);
+          child = createNode(groupRow);
           node.children.set(groupId, child);
           node.order.push(groupId);
+
+          // Link this group into its parent group's children list.
+          if (node.groupRow) {
+            childrenOf(node.groupRow).push(groupRow.id);
+          }
         }
+
+        ancestorIds.push(child.groupRow!.id);
         node = child;
       }
 
-      // The row belongs to the deepest node on its path.
+      // The row belongs to the deepest node; link it into that group too.
       node.rows.push(row);
+      if (node.groupRow) {
+        childrenOf(node.groupRow).push(row.id);
+      }
+      (row as Record<string, unknown>)[pathField] = [...ancestorIds, row.id];
     }
 
     // ------------------------------------------------------------------
@@ -107,27 +129,25 @@ export const extendRowsMapper = <TRow extends data.UnknownRow>(
     const tuples: Tuple[] = [];
     let rowsCount = 0;
 
-    /** Emit one node's children + rows. Returns false once maxRows is hit. */
-    const emit = (node: TreeNode<TRow>): boolean => {
-      for (const groupId of node.order) {
-        const child = node.children.get(groupId)!;
-
-        // Emit this child's group row...
-        if (child.groupRow) {
-          if (rowsCount + 1 > maxRows) {
-            return false;
-          }
-          rowsCount += 1;
-          tuples.push([child.groupRow] as Tuple);
+    /** Emit a node's group row, its children, then its leaf rows. */
+    const walk = (node: TreeNode): boolean => {
+      // Emit this node's own group row (root has none).
+      if (node.groupRow) {
+        if (rowsCount + 1 > maxRows) {
+          return false;
         }
+        rowsCount += 1;
+        tuples.push([node.groupRow] as Tuple);
+      }
 
-        // ...then everything beneath it.
-        if (!emit(child)) {
+      // Recurse into child groups.
+      for (const childGroupId of node.order) {
+        if (!walk(node.children.get(childGroupId)!)) {
           return false;
         }
       }
 
-      // Leaf data rows directly under this node.
+      // Emit leaf data rows directly under this node.
       if (node.rows.length > 0) {
         if (rowsCount + node.rows.length > maxRows) {
           return false;
@@ -139,7 +159,7 @@ export const extendRowsMapper = <TRow extends data.UnknownRow>(
       return true;
     };
 
-    emit(root);
+    walk(root);
     return tuples;
   };
 };
