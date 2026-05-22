@@ -1,16 +1,24 @@
-const tuples: Tuple[] = [];
+const previousSelectedViewId = hooks.usePrevious(selectedViewId);
+const viewJustChanged = useRef(false);
 
-const walk = (node: TreeNode): void => {
-  if (node.groupRow) {
-    tuples.push([node.groupRow] as Tuple);
+useEffect(() => {
+  if (previousSelectedViewId !== selectedViewId && previousSelectedViewId !== undefined) {
+    console.log('!!! view changed', { previousSelectedViewId, selectedViewId });
+    viewJustChanged.current = true;
   }
-  for (const childGroupId of node.order) {
-    walk(node.children.get(childGroupId)!);
-  }
-  if (node.rows.length > 0) {
-    tuples.push([...node.rows] as Tuple);
-  }
-};
+}, [previousSelectedViewId, selectedViewId]);
 
-walk(root);
-return tuples.slice(0, maxRows);
+useEffect(() => {
+  if (!viewJustChanged.current) return;
+  viewJustChanged.current = false;
+
+  console.log('!!! filters settled after view change', { filteringSpec: searchState.filteringSpec });
+
+  if (!searchState.filteringSpec?.length) {
+    console.log('!!! no filters, skipping handleUpdatePanels');
+    return;
+  }
+
+  console.log('!!! calling handleUpdatePanels');
+  handleUpdatePanels();
+}, [searchState.filteringSpec]);
