@@ -1,68 +1,43 @@
- const groupingConfig = {
-      region: {},
-      currency: {},
-    };
- 
-    const generateGroupingGridOptions = (groupingConfig) => {
-      const groupByFields = Object.keys(groupingConfig);
- 
-      const buildPath = (row) => [
-        ...groupByFields.map((field) => String(row[field])),
-        row.id,
-      ];
- 
-      const rowDataWithPath = rawRows.map((row) => ({
-        ...row,
-        '#path': buildPath(row),
-      }));
- 
-      return {
-        treeData: true,
-        rowData: rowDataWithPath,
-        getDataPath: (data) => data['#path'],
-        getRowId: (params) => params.data.id,
-        autoGroupColumnDef: {
-          headerName: 'Group / Row',
-          minWidth: 280,
-          cellRendererParams: {
-            suppressCount: false,
-            innerRenderer: (params) => {
-              if (params.node.group) {
-                return params.node.key;
-              }
-              return params.data?.id ?? '';
-            },
-          },
-        },
-        groupDefaultExpanded: 1,
-      };
-    };
- 
-    const baseGridOptions = {
-      columnDefs: [
-        { field: 'date',     headerName: 'Date',     minWidth: 130 },
-        { field: 'region',   headerName: 'Region',   minWidth: 110 },
-        { field: 'currency', headerName: 'Currency', minWidth: 110 },
-        { field: 'trader',   headerName: 'Trader',   minWidth: 160 },
-        {
-          field: 'price',
-          headerName: 'Price',
-          type: 'numericColumn',
-          minWidth: 120,
-          valueFormatter: (p) =>
-            typeof p.value === 'number' ? p.value.toFixed(4) : '',
-        },
-      ],
-      defaultColDef: {
-        flex: 1,
-        sortable: true,
-        resizable: true,
-        filter: true,
-      },
-      animateRows: true,
-    };
- 
-    const groupingGridOptions = generateGroupingGridOptions(groupingConfig);
- 
-    const gridOptions = { ...baseGridOptions, ...groupingGridOptions };
- 
+/* ===== Leg-line rendering for autoGroupColumnDef ===== */
+:global(.ag-row):has(:global(.shallow-tree-child)) {
+
+  /* DEBUG: turns the cell pink if the selector reaches it.
+     Remove this rule once leg lines render. */
+  :global(.auto-group-column) {
+    background-color: rgba(255, 0, 0, 0.25) !important;
+  }
+
+  /* leg line — non-last child rows (vertical dashed run) */
+  &:not(:global(.last-child-row)) :global(.auto-group-column) {
+    background-repeat: repeat-y;
+    background-position: top left;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpath d='M12 0 V24' stroke='%23999' stroke-width='1' stroke-dasharray='2 2'/%3E%3C/svg%3E");
+  }
+
+  /* leg line — last child row (dashed elbow) */
+  &:global(.last-child-row) :global(.auto-group-column) {
+    background-repeat: no-repeat;
+    background-position: top left;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpath d='M12 0 V12 H24' fill='none' stroke='%23999' stroke-width='1' stroke-dasharray='2 2'/%3E%3C/svg%3E");
+  }
+}
+
+/* Fallback anchor if .auto-group-column is module-hashed in the DOM.
+   col-id is set by AG Grid and is never hashed. Uncomment to test. */
+/*
+:global(.ag-row):has(:global(.shallow-tree-child)) {
+  :global([col-id="ag-Grid-AutoColumn"]) {
+    background-color: rgba(255, 0, 0, 0.25) !important;
+  }
+  &:not(:global(.last-child-row)) :global([col-id="ag-Grid-AutoColumn"]) {
+    background-repeat: repeat-y;
+    background-position: top left;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpath d='M12 0 V24' stroke='%23999' stroke-width='1' stroke-dasharray='2 2'/%3E%3C/svg%3E");
+  }
+  &:global(.last-child-row) :global([col-id="ag-Grid-AutoColumn"]) {
+    background-repeat: no-repeat;
+    background-position: top left;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpath d='M12 0 V12 H24' fill='none' stroke='%23999' stroke-width='1' stroke-dasharray='2 2'/%3E%3C/svg%3E");
+  }
+}
+*/
