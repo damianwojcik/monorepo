@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
-const MIN = 220;          // zmierz u siebie
+const MIN = 220;          // zmierz u siebie, patrz snippet niżej
 const MIN_CONTENT = 480;  // ile musi zostać dla gridu
 const DEFAULT = 260;
 const MAX_RATIO = 0.5;
 
 type Props = {
   stored?: number;
-  onCommit: (w: number) => void;
+  onCommit: (width: number) => void;
 };
 
 export const useResizablePanel = ({ stored, onCommit }: Props) => {
@@ -26,23 +26,32 @@ export const useResizablePanel = ({ stored, onCommit }: Props) => {
   useLayoutEffect(() => {
     const el = contentRef.current;
     if (!el) return;
+
     const ro = new ResizeObserver(([entry]) => {
-      setContainerW(entry.contentRect.width);
+      // .content nie powinien rosnąć razem z panelem, ale gdyby CSS
+      // gdzieś przeciekł — parent jest twardym sufitem i ucina pętlę
+      const parentW = el.parentElement?.clientWidth ?? Number.POSITIVE_INFINITY;
+      setContainerW(Math.min(entry.contentRect.width, parentW));
     });
+
     ro.observe(el);
-    return () => ro.disconnect();
+    return () => {
+      ro.disconnect();
+      cancelAnimationFrame(frame.current);
+    };
   }, []);
 
   const maxW = containerW
     ? Math.max(MIN, Math.min(containerW * MAX_RATIO, containerW - MIN_CONTENT))
-    : Number.POSITIVE_INFINITY;
+    : DEFAULT; // fallback przed pierwszym callbackiem RO — nigdy Infinity
 
   const clamp = useCallback(
     (w: number) => Math.min(Math.max(w, MIN), maxW),
     [maxW],
   );
 
-  // stored NIE jest przycinane przy zapisie — tylko przy renderze
+  // stored NIE jest przycinane przy zapisie, tylko przy renderze —
+  // dzięki temu powrót na duży monitor przywraca oryginalną szerokość
   const effective = clamp(width);
 
   const paint = (w: number) => {
@@ -74,7 +83,6 @@ export const useResizablePanel = ({ stored, onCommit }: Props) => {
     const d = drag.current;
     if (!d) return;
     const next = clamp(d.w + (e.clientX - d.x));
-    // rAF — pointermove leci gęściej niż klatki
     cancelAnimationFrame(frame.current);
     frame.current = requestAnimationFrame(() => {
       paint(next);
@@ -83,12 +91,14 @@ export const useResizablePanel = ({ stored, onCommit }: Props) => {
   };
 
   const endDrag = (e: React.PointerEvent<HTMLButtonElement>) => {
-    if (!drag.current) return;
     const d = drag.current;
+    if (!d) return;
     drag.current = null;
     cancelAnimationFrame(frame.current);
     contentRef.current?.removeAttribute('data-dragging');
-    e.currentTarget.releasePointerCapture?.(e.pointerId);
+    if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
     commit(d.w + (e.clientX - d.x));
   };
 
@@ -121,10 +131,19 @@ export const useResizablePanel = ({ stored, onCommit }: Props) => {
   };
 };
 
-// 
+.main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
 .content {
   display: flex;
+  width: 100%;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   --views-w: 260px;
 }
 
@@ -136,8 +155,17 @@ export const useResizablePanel = ({ stored, onCommit }: Props) => {
 }
 
 .wrapper {
+  display: flex;
+  flex-direction: column;
   flex: 1 1 0;
-  min-width: 0; /* bez tego grid nie odda szerokości */
+  min-width: 0; /* bez tego flex item nie zejdzie poniżej content size */
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Header z szerokim inputem wypycha layout, jeśli mu na to pozwolić */
+.wrapper > * {
+  min-width: 0;
 }
 
 .handle {
@@ -185,17 +213,28 @@ export const useResizablePanel = ({ stored, onCommit }: Props) => {
   }
 }
 
+const commitViewsPanelWidth = useMemo(
+  () => debounce((w: number) => saveUserSetting('viewsPanelWidth', w), 500),
+  [],
+);
+useEffect(() => () => commitViewsPanelWidth.flush(), [commitViewsPanelWidth]);
+
 const { contentRef, handleProps } = useResizablePanel({
   stored: userSettings?.viewsPanelWidth,
-  onCommit: saveViewsPanelWidth,
+  onCommit: commitViewsPanelWidth,
 });
 
-<div className={s.content} ref={contentRef}>
-  <div className={s.left}>
-    <ViewsPanel />
-    <button className={s.handle} {...handleProps} />
+return (
+  <div data-testid="RATES-NEXUS" className={s.main}>
+    <ViewsTopBar stats={stats} />
+    <div className={s.content} ref={contentRef}>
+      <div className={s.left}>
+        <ViewsPanel />
+        <button className={s.handle} {...handleProps} />
+      </div>
+      <div data-testid="rates-nexus-grid" className={s.wrapper}>
+        {/* bez zmian */}
+      </div>
+    </div>
   </div>
-  <div data-testid="rates-nexus-grid" className={s.wrapper}>
-    {/* bez zmian */}
-  </div>
-</div>
+);
