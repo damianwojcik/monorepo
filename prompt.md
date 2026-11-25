@@ -1,4 +1,10 @@
-I want to review “by hand” whole code in UI app. Tell me where I should start. Which code is most critical, important. Make a list from most to least important code so I can check it and provide remarks, guides how I would like my code to look like. I also want to look for vulnerabilites, performance leaks, unused code, duplicated code. Patterns, usage of react hooks, context, memo etc. Also I will verify bundle size, trying to keep size as low as possible. Maybe create plan with checkboxes so we can go together trough it one by one. I want to do it once now at the early age of app. Store rules in copilot instructions like code conventions / guidelines so later generated code will match my requirements for code convention, quality, patterns, namings, structure etc.
-I think let start with veryfing current copilot instructions: guidelines vs code conventions if there are any conflicts, let have single source of truth.
-Final step of refactor will be performance optimization, bundle size analysis, unnecessary packages, slowness or layout shifts when rendering.
-After all I want to revisit backend-requests.md and create list of max 5 bullet points (what is critical for now) for BE developer. I think JWT authentication & entitlement handling without neo is crtitical now. 
+
+Hi Markus,
+
+I haven't used the Tokenomics plugin so far - I'll install it now, thanks for the hint.
+
+I've recently started optimizing my usage: keeping context to the smallest possible scope, writing shorter and more targeted prompts, and using the "auto" model more often.
+Still, with my daily workload I expect to need more than 50,000 AIC, so I'd appreciate the approval for SKU-GHCP-B-P2-1000 (or P2-900 if that works better).
+
+Best regards,
+Damian
